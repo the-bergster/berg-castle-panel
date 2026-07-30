@@ -5,6 +5,7 @@ Talks directly to Lutron RadioRA2 processors over Telnet, bypasses Josh.ai entir
 for lights, and streams live state via WebSocket. Hosted on the Jony Mac, exposed
 publicly via Cloudflare Tunnel + Cloudflare Access, installable as a PWA.
 
+**Repo:** [the-bergster/berg-castle-panel](https://github.com/the-bergster/berg-castle-panel) (private)
 **Built** 2026-07-30 in a single ~10-hour session between Simon and Jony (his creative-director AI). See `HISTORY.md` for the story of how this got built (Sonos → Josh API crack → Lutron reverse engineering → this app).
 
 ---
