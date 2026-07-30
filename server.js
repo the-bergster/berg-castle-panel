@@ -1,0 +1,268 @@
+// Berg Castle Control Panel v0.5 — Home + Room detail, WebSocket live sync.
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { LutronClient } = require('./lutron');
+const { loadRooms } = require('./rooms');
+const { loadScenes } = require('./scenes');
+const { listSynthetic, findSynthetic } = require('./synthetic-scenes');
+
+const PORT = 4321;
+const ROOMS_DATA = loadRooms();
+const SCENES_DATA = loadScenes(
+  path.join(__dirname, 'picos.json'),
+  path.join(__dirname, 'rooms.json'),
+);
+const SYNTHETIC = listSynthetic();
+
+const lutron = new LutronClient();
+lutron.setKnownOutputIds(ROOMS_DATA.all_output_ids);
+
+lutron.on('connect', () => console.log(`[Lutron] connected to ${lutron.ip}, monitoring enabled`));
+lutron.on('disconnect', (e) => console.log(`[Lutron] disconnected: ${e ? e.message : ''}`));
+lutron.on('change', ({ id, level, prev }) => {
+  console.log(`[Lutron] #${id}: ${prev ?? '?'} → ${level}`);
+  broadcast({ type: 'state', id, level });
+});
+lutron.connect().catch((e) => console.error('[Lutron] initial connect error:', e.message));
+
+// ---- WebSocket ----
+const clients = new Set();
+
+function wsAccept(key) {
+  return crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+}
+
+function wsFrame(payload) {
+  const data = Buffer.from(payload, 'utf8');
+  const len = data.length;
+  if (len < 126) return Buffer.concat([Buffer.from([0x81, len]), data]);
+  if (len < 65536) {
+    const hdr = Buffer.alloc(4);
+    hdr[0] = 0x81; hdr[1] = 126; hdr.writeUInt16BE(len, 2);
+    return Buffer.concat([hdr, data]);
+  }
+  const hdr = Buffer.alloc(10);
+  hdr[0] = 0x81; hdr[1] = 127; hdr.writeBigUInt64BE(BigInt(len), 2);
+  return Buffer.concat([hdr, data]);
+}
+
+function broadcast(msg) {
+  const frame = wsFrame(JSON.stringify(msg));
+  for (const c of clients) {
+    try { c.write(frame); } catch (_) { clients.delete(c); }
+  }
+}
+
+function handleUpgrade(req, socket) {
+  const key = req.headers['sec-websocket-key'];
+  if (!key) { socket.destroy(); return; }
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\n' +
+    'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
+    `Sec-WebSocket-Accept: ${wsAccept(key)}\r\n\r\n`
+  );
+  clients.add(socket);
+  console.log(`[WS] +client (${clients.size})`);
+  socket.write(wsFrame(JSON.stringify({ type: 'snapshot', state: lutron.getState() })));
+  socket.on('data', () => {});
+  socket.on('close', () => { clients.delete(socket); console.log(`[WS] -client (${clients.size})`); });
+  socket.on('error', () => { clients.delete(socket); });
+}
+
+// ---- HTTP ----
+const STATIC_ROOT = path.join(__dirname, 'public');
+
+function serveStatic(res, urlPath) {
+  const filePath = path.join(STATIC_ROOT, urlPath);
+  if (!filePath.startsWith(STATIC_ROOT)) { res.writeHead(403); res.end(); return; }
+  fs.readFile(filePath, (err, data) => {
+    if (err) { res.writeHead(404); res.end('Not found'); return; }
+    const ext = path.extname(filePath).toLowerCase();
+    const types = {
+      '.html': 'text/html; charset=utf-8',
+      '.css': 'text/css; charset=utf-8',
+      '.js': 'application/javascript; charset=utf-8',
+      '.json': 'application/json; charset=utf-8',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.webmanifest': 'application/manifest+json',
+    };
+    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.end(data);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+
+  // Routes
+  if (req.method === 'GET' && (pathname === '/' || pathname === '/room' || pathname.startsWith('/room/'))) {
+    serveStatic(res, 'index.html'); return;
+  }
+  if (req.method === 'GET' && pathname === '/manifest.webmanifest') {
+    serveStatic(res, 'manifest.webmanifest'); return;
+  }
+  if (req.method === 'GET' && pathname.startsWith('/assets/')) {
+    serveStatic(res, pathname.replace(/^\/assets\//, 'assets/')); return;
+  }
+  if (req.method === 'GET' && pathname === '/app.js') {
+    serveStatic(res, 'app.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/app.css') {
+    serveStatic(res, 'app.css'); return;
+  }
+  if (req.method === 'GET' && pathname === '/favicon.svg') {
+    serveStatic(res, 'favicon.svg'); return;
+  }
+
+  // API
+  if (req.method === 'GET' && pathname === '/api/rooms') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      total_rooms: ROOMS_DATA.total_rooms,
+      total_outputs: ROOMS_DATA.total_outputs,
+      zones: ROOMS_DATA.zones,
+      rooms: ROOMS_DATA.rooms,
+    }));
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/api/scenes') {
+    // Merge synthetic "home" scenes into home_scenes list
+    const syntheticHome = SYNTHETIC.filter(s => s.home).map(s => ({
+      synthetic_id: s.id,
+      label: s.label,
+      emoji: s.emoji,
+      affected_count: s.affected_count,
+      area: s.area,
+      pico_name: s.pico_name,
+    }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      home_scenes: [...SCENES_DATA.home_scenes, ...syntheticHome],
+      master_off: SCENES_DATA.master_off,
+      by_room: SCENES_DATA.by_room,
+      total: SCENES_DATA.total_scenes + SYNTHETIC.length,
+    }));
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/synthetic-scene') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { id } = JSON.parse(body);
+        const scene = findSynthetic(id);
+        if (!scene) { res.writeHead(404); res.end('{"error":"unknown scene"}'); return; }
+        console.log(`[Scene:synth] ${scene.id} — ${scene.outputs.length} outputs`);
+        await lutron.setMany(scene.outputs.map(o => ({ id: o.id, level: o.level, fade: scene.fade || 1 })));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ id, count: scene.outputs.length }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/scene') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { pico_id, button } = JSON.parse(body);
+        if (typeof pico_id !== 'number' || typeof button !== 'number') {
+          res.writeHead(400); res.end('{"error":"pico_id + button required"}'); return;
+        }
+        console.log(`[Scene] pico #${pico_id} btn ${button}`);
+        await lutron.pressPicoButton(pico_id, button);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ pico_id, button }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/api/state') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(lutron.getState()));
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/set') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { id, level, fade } = JSON.parse(body);
+        await lutron.setOutput(id, level, fade ?? 1);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ id, level }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/room-set') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { room_id, level, fade } = JSON.parse(body);
+        const room = ROOMS_DATA.rooms.find(r => r.id === room_id);
+        if (!room) { res.writeHead(404); res.end('{"error":"unknown room"}'); return; }
+        await lutron.setMany(room.outputs.map(o => ({ id: o.id, level, fade: fade ?? 1 })));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ room_id, level, count: room.outputs.length }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/all-off') {
+    lutron.setMany(ROOMS_DATA.all_output_ids.map(id => ({ id, level: 0, fade: 2 })));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ count: ROOMS_DATA.all_output_ids.length }));
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/zone-set') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { zone, level, fade } = JSON.parse(body);
+        const zoneRooms = ROOMS_DATA.zones.find(z => z.name === zone);
+        if (!zoneRooms) { res.writeHead(404); res.end('{"error":"unknown zone"}'); return; }
+        const cmds = [];
+        for (const r of zoneRooms.rooms) for (const o of r.outputs) cmds.push({ id: o.id, level, fade: fade ?? 2 });
+        await lutron.setMany(cmds);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ zone, level, count: cmds.length }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  res.writeHead(404); res.end('Not found');
+});
+
+server.on('upgrade', (req, socket) => {
+  if (req.headers.upgrade?.toLowerCase() === 'websocket') handleUpgrade(req, socket);
+  else socket.destroy();
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Berg Castle Panel → http://localhost:${PORT}`);
+  console.log(`  ${ROOMS_DATA.total_rooms} rooms, ${ROOMS_DATA.total_outputs} outputs, ${ROOMS_DATA.zones.length} zones`);
+});

@@ -1,0 +1,874 @@
+{
+  "generated_at": "2026-07-30T20:30:24.025Z",
+  "source": "/Users/jony/.openclaw/workspace/memory/home-control/lutron-158.xml",
+  "total_outputs": 114,
+  "total_rooms": 37,
+  "rooms": [
+    {
+      "id": 173,
+      "name": "Barn",
+      "path": "Berg Residence > Barn",
+      "slug": "barn",
+      "outputs": [
+        {
+          "id": 174,
+          "name": "porch lights",
+          "type": "MLV"
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "name": "Basement",
+      "path": "Berg Residence > Basement",
+      "slug": "basement",
+      "outputs": [
+        {
+          "id": 116,
+          "name": "Basement lights",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Bedroom 3",
+      "path": "Berg Residence > Bedroom 3",
+      "slug": "bedroom-3",
+      "outputs": [
+        {
+          "id": 120,
+          "name": "Bedside left",
+          "type": "INC"
+        },
+        {
+          "id": 122,
+          "name": "Bedside right",
+          "type": "INC"
+        },
+        {
+          "id": 163,
+          "name": "Pendant",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Bedroom Four",
+      "path": "Berg Residence > Bedroom Four",
+      "slug": "bedroom-four",
+      "outputs": [
+        {
+          "id": 37,
+          "name": "Pendant",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Bedroom Hall",
+      "path": "Berg Residence > Bedroom Hall",
+      "slug": "bedroom-hall",
+      "outputs": [
+        {
+          "id": 20,
+          "name": "Chandelier",
+          "type": "ELV"
+        },
+        {
+          "id": 21,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 22,
+          "name": "Rear Stairs Single Recess",
+          "type": "ELV"
+        },
+        {
+          "id": 23,
+          "name": "Pendant",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Bedroom Hall Bathroom",
+      "path": "Berg Residence > Bedroom Hall Bathroom",
+      "slug": "bedroom-hall-bathroom",
+      "outputs": [
+        {
+          "id": 25,
+          "name": "Vanity",
+          "type": "ELV"
+        },
+        {
+          "id": 26,
+          "name": "Fan",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 27,
+          "name": "Shower",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "name": "Bedroom Hall Stairs Bathroom",
+      "path": "Berg Residence > Bedroom Hall Stairs Bathroom",
+      "slug": "bedroom-hall-stairs-bathroom",
+      "outputs": [
+        {
+          "id": 88,
+          "name": "Fan",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 89,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 139,
+          "name": "Sconce",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Bedroom One",
+      "path": "Berg Residence > Bedroom One",
+      "slug": "bedroom-one",
+      "outputs": [
+        {
+          "id": 34,
+          "name": "Pedant",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "name": "Buttler&apos;s Pantry",
+      "path": "Berg Residence > Buttler&apos;s Pantry",
+      "slug": "buttler-apos-s-pantry",
+      "outputs": [
+        {
+          "id": 75,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 105,
+          "name": "Under cabinet",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 190,
+      "name": "Car Garage",
+      "path": "Berg Residence > Car Garage",
+      "slug": "car-garage",
+      "outputs": [
+        {
+          "id": 78,
+          "name": "Ceiling lights",
+          "type": "ELV"
+        },
+        {
+          "id": 79,
+          "name": "Recessed bottom of stairs",
+          "type": "ELV"
+        },
+        {
+          "id": 196,
+          "name": "Main ceiling lights",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 214,
+      "name": "Christmas Lights",
+      "path": "Berg Residence > Christmas Lights",
+      "slug": "christmas-lights",
+      "outputs": [
+        {
+          "id": 215,
+          "name": "tree upstairs",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 216,
+          "name": "Tree Lounge",
+          "type": "INC"
+        },
+        {
+          "id": 217,
+          "name": "Tree Dining",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 82,
+      "name": "Dining Bathroom",
+      "path": "Berg Residence > Dining Bathroom",
+      "slug": "dining-bathroom",
+      "outputs": [
+        {
+          "id": 83,
+          "name": "Fan",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 84,
+          "name": "Shower",
+          "type": "ELV"
+        },
+        {
+          "id": 85,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 86,
+          "name": "Sconces",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Dining Room",
+      "path": "Berg Residence > Dining Room",
+      "slug": "dining-room",
+      "outputs": [
+        {
+          "id": 59,
+          "name": "Receesed",
+          "type": "ELV"
+        },
+        {
+          "id": 60,
+          "name": "Single Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 66,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 118,
+          "name": "Lamp 1",
+          "type": "INC"
+        },
+        {
+          "id": 119,
+          "name": "Lamp 2",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Dovile Office",
+      "path": "Berg Residence > Dovile Office",
+      "slug": "dovile-office",
+      "outputs": [
+        {
+          "id": 35,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 108,
+          "name": "Desk Lamp",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Exterior",
+      "path": "Berg Residence > Exterior",
+      "slug": "exterior",
+      "outputs": [
+        {
+          "id": 45,
+          "name": "Patio Sconce",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 54,
+          "name": "Front Door Pendant",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 65,
+          "name": "Side Door Pendant",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 76,
+          "name": "Kitchen Patio",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 113,
+          "name": "Landscape Back 2",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 114,
+          "name": "Twinkle Lights Garden",
+          "type": "ELV"
+        },
+        {
+          "id": 128,
+          "name": "Landscape Front 2",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 207,
+      "name": "Extractor Fan Kitchen",
+      "path": "Berg Residence > Extractor Fan Kitchen",
+      "slug": "extractor-fan-kitchen",
+      "outputs": [
+        {
+          "id": 208,
+          "name": "Extractor Kitchen",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 140,
+      "name": "Fireplaces",
+      "path": "Berg Residence > Fireplaces",
+      "slug": "fireplaces",
+      "outputs": [
+        {
+          "id": 80,
+          "name": "Office Fireplace",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 151,
+          "name": "Dining Fireplace",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 152,
+          "name": "Foyer Fireplace",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 154,
+          "name": "Master fireplace",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Foyer",
+      "path": "Berg Residence > Foyer",
+      "slug": "foyer",
+      "outputs": [
+        {
+          "id": 51,
+          "name": "Sconces",
+          "type": "INC"
+        },
+        {
+          "id": 53,
+          "name": "Pendant",
+          "type": "INC"
+        },
+        {
+          "id": 57,
+          "name": "Recessed",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Foyer Bathroom",
+      "path": "Berg Residence > Foyer Bathroom",
+      "slug": "foyer-bathroom",
+      "outputs": [
+        {
+          "id": 56,
+          "name": "Foyer bathroom sconce",
+          "type": "ELV"
+        },
+        {
+          "id": 156,
+          "name": "Foyer bathroom recessed",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Gym",
+      "path": "Berg Residence > Gym",
+      "slug": "gym",
+      "outputs": [
+        {
+          "id": 7,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 47,
+          "name": "neon sign",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Kids Bedroom",
+      "path": "Berg Residence > Kids Bedroom",
+      "slug": "kids-bedroom",
+      "outputs": [
+        {
+          "id": 17,
+          "name": "Side table lamp",
+          "type": "INC"
+        },
+        {
+          "id": 38,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 50,
+          "name": "kids sconce",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Kids Playroom",
+      "path": "Berg Residence > Kids Playroom",
+      "slug": "kids-playroom",
+      "outputs": [
+        {
+          "id": 39,
+          "name": "Pendant",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Kitchen",
+      "path": "Berg Residence > Kitchen",
+      "slug": "kitchen",
+      "outputs": [
+        {
+          "id": 68,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 69,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 70,
+          "name": "?",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 71,
+          "name": "Table Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 72,
+          "name": "Stove Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 73,
+          "name": "Sconces",
+          "type": "ELV"
+        },
+        {
+          "id": 106,
+          "name": "under cabinet",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 165,
+      "name": "Laundry room",
+      "path": "Berg Residence > Laundry room",
+      "slug": "laundry-room",
+      "outputs": [
+        {
+          "id": 166,
+          "name": "Recessed",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Lounge",
+      "path": "Berg Residence > Lounge",
+      "slug": "lounge",
+      "outputs": [
+        {
+          "id": 41,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 42,
+          "name": "Nook Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 94,
+          "name": "Lamp 1",
+          "type": "INC"
+        },
+        {
+          "id": 95,
+          "name": "Lamp 2",
+          "type": "INC"
+        },
+        {
+          "id": 96,
+          "name": "Lamp 3",
+          "type": "INC"
+        },
+        {
+          "id": 97,
+          "name": "Lamp 4",
+          "type": "INC"
+        },
+        {
+          "id": 98,
+          "name": "Lamp 5",
+          "type": "INC"
+        },
+        {
+          "id": 100,
+          "name": "Lamp 7",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 126,
+      "name": "Master Bath",
+      "path": "Berg Residence > Master Bath",
+      "slug": "master-bath",
+      "outputs": [
+        {
+          "id": 12,
+          "name": "Vanity",
+          "type": "ELV"
+        },
+        {
+          "id": 13,
+          "name": "Fan",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 14,
+          "name": "Shower",
+          "type": "ELV"
+        },
+        {
+          "id": 15,
+          "name": "Pendant",
+          "type": "ELV"
+        },
+        {
+          "id": 16,
+          "name": "Recess",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "name": "Master Bed",
+      "path": "Berg Residence > Master Bed",
+      "slug": "master-bed",
+      "outputs": [
+        {
+          "id": 8,
+          "name": "Bedroom Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 103,
+          "name": "Bed Lamp 1",
+          "type": "INC"
+        },
+        {
+          "id": 104,
+          "name": "Bed Lamp 2",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Master Suite",
+      "path": "Berg Residence > Master Suite",
+      "slug": "master-suite",
+      "outputs": [
+        {
+          "id": 9,
+          "name": "Sitting Recesssed",
+          "type": "ELV"
+        },
+        {
+          "id": 10,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 11,
+          "name": "Outlet",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 107,
+          "name": "Bed Lounge Lamp 1",
+          "type": "INC"
+        },
+        {
+          "id": 109,
+          "name": "Bed Lounge Lamp 3",
+          "type": "INC"
+        },
+        {
+          "id": 110,
+          "name": "Bed Lounge Lamp 4",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Office",
+      "path": "Berg Residence > Office",
+      "slug": "office",
+      "outputs": [
+        {
+          "id": 62,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 160,
+          "name": "Desk lamp",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 198,
+      "name": "Office 2",
+      "path": "Berg Residence > Office 2",
+      "slug": "office-2",
+      "outputs": [
+        {
+          "id": 199,
+          "name": "ATEM-CAM-SCREEN",
+          "type": "INC"
+        },
+        {
+          "id": 200,
+          "name": "Rear Camera",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 168,
+      "name": "Playground",
+      "path": "Berg Residence > Playground",
+      "slug": "playground",
+      "outputs": [
+        {
+          "id": 169,
+          "name": "Playgroung interior",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 172,
+          "name": "Playground Flood",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 170,
+      "name": "Pool",
+      "path": "Berg Residence > Pool",
+      "slug": "pool",
+      "outputs": [
+        {
+          "id": 171,
+          "name": "Pool lights",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 211,
+      "name": "Reading Nook Upstairs",
+      "path": "Berg Residence > Reading Nook Upstairs",
+      "slug": "reading-nook-upstairs",
+      "outputs": [
+        {
+          "id": 212,
+          "name": "Reading Nook Lamps",
+          "type": "ELV"
+        }
+      ]
+    },
+    {
+      "id": 143,
+      "name": "Security Lights",
+      "path": "Berg Residence > Security Lights",
+      "slug": "security-lights",
+      "outputs": [
+        {
+          "id": 144,
+          "name": "Security Front",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 145,
+          "name": "Security Back",
+          "type": "NON_DIM"
+        },
+        {
+          "id": 146,
+          "name": "Security Barn",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Side Foyer",
+      "path": "Berg Residence > Side Foyer",
+      "slug": "side-foyer",
+      "outputs": [
+        {
+          "id": 64,
+          "name": "Recessed",
+          "type": "ELV"
+        },
+        {
+          "id": 121,
+          "name": "Lamp",
+          "type": "INC"
+        }
+      ]
+    },
+    {
+      "id": 176,
+      "name": "Spa",
+      "path": "Berg Residence > Spa",
+      "slug": "spa",
+      "outputs": [
+        {
+          "id": 177,
+          "name": "Recessed by stairs",
+          "type": "ELV"
+        },
+        {
+          "id": 178,
+          "name": "Sauna",
+          "type": "ELV"
+        },
+        {
+          "id": 179,
+          "name": "Steam",
+          "type": "ELV"
+        },
+        {
+          "id": 180,
+          "name": "Bathroom",
+          "type": "ELV"
+        },
+        {
+          "id": 181,
+          "name": "Cold &amp; Hot tub",
+          "type": "ELV"
+        },
+        {
+          "id": 182,
+          "name": "LEDs wood feature",
+          "type": "INC"
+        },
+        {
+          "id": 187,
+          "name": "LEDs Steam seats",
+          "type": "ELV"
+        },
+        {
+          "id": 188,
+          "name": "LEDs Sauna seats",
+          "type": "ELV"
+        },
+        {
+          "id": 189,
+          "name": "Tub lights",
+          "type": "INC"
+        },
+        {
+          "id": 192,
+          "name": "Bathroom niche lights",
+          "type": "ELV"
+        },
+        {
+          "id": 193,
+          "name": "Closet under stairs",
+          "type": "NON_DIM"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Sun Room",
+      "path": "Berg Residence > Sun Room",
+      "slug": "sun-room",
+      "outputs": [
+        {
+          "id": 44,
+          "name": "Recessed",
+          "type": "ELV"
+        }
+      ]
+    }
+  ]
+}

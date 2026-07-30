@@ -1,0 +1,13 @@
+{
+  "name": "Berg Castle",
+  "short_name": "Berg Castle",
+  "description": "Home control for Berg Castle",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08080a",
+  "theme_color": "#08080a",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
