@@ -139,10 +139,20 @@ class LutronClient extends EventEmitter {
   // Sequence per Lutron: press (3), release (4). Some scenes only need press.
   async pressPicoButton(picoId, componentNumber) {
     await this.waitReady();
-    this.socket.write(`#DEVICE,${picoId},${componentNumber},3\r\n`);
-    // Small delay then release for a clean single-tap event
+    const sock = this.socket;
+    try { sock.write(`#DEVICE,${picoId},${componentNumber},3\r\n`); }
+    catch (e) { console.error('[Lutron] press write failed:', e && e.message); return; }
+    // Small delay then release for a clean single-tap event. Guard against socket
+    // dying in the 100ms window — a naked write() throw here would kill the process
+    // (unhandled sync throw from a setTimeout callback).
     setTimeout(() => {
-      if (this.socket) this.socket.write(`#DEVICE,${picoId},${componentNumber},4\r\n`);
+      try {
+        if (this.socket && this.socket === sock && !sock.destroyed) {
+          sock.write(`#DEVICE,${picoId},${componentNumber},4\r\n`);
+        }
+      } catch (e) {
+        console.error('[Lutron] release write failed:', e && e.message);
+      }
     }, 100);
   }
 

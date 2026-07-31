@@ -1,5 +1,16 @@
 // Berg Castle Control Panel v0.5 — Home + Room detail, WebSocket live sync.
 
+// Crash forensics + resilience: log then keep running. Silent exits on unhandled
+// rejection were the root cause of the 2026-07-31 overnight outage.
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL uncaughtException]', new Date().toISOString(), err && err.stack || err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL unhandledRejection]', new Date().toISOString(), reason && reason.stack || reason);
+});
+process.on('SIGTERM', () => { console.log('[signal] SIGTERM received, exiting'); process.exit(0); });
+process.on('SIGINT', () => { console.log('[signal] SIGINT received, exiting'); process.exit(0); });
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
