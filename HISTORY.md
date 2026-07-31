@@ -153,10 +153,34 @@ Simon's steer at end of session: **document first, then get on the Ruckus switch
 
 ---
 
+### 18:30 EDT — Kofi call: network admin creds unlocked, full house mapped
+
+Simon jumped on the phone with Kofi (used to be on the team that installed the original Berg Castle setup; lost dealer access ~4 months ago and is working on regaining it). Kofi handed over admin credentials for:
+
+- **Araknis router (192.168.2.1)**
+- **Ruckus ZoneDirector (192.168.2.5)**
+
+Both verified live. I also spotted two OvrC Wattbox PDUs (`192.168.2.6` and `.7`) still on factory defaults — those never got changed. All credentials stashed at `.secrets/berg-castle-network/creds.env` (chmod 600, never in chat or git — including this file).
+
+Then used the Araknis REST API (`GET /api/cgi-bin/v1/status/clients-services`) to pull the complete DHCP client table — **103 devices** — which finally gave us:
+
+- **The real VLAN topology:** VLAN 1 "Frontier" (`.2.x`) is the main LAN; VLAN 2 "Voice" (`.4.x`) is Sonos; VLAN 3 "Guest" (`.3.x`) is guest Wi-Fi. Yesterday's "Nanos are on a separate VLAN" theory was wrong.
+- **All 10 Josh Nanos on `.2.x`** — same subnet as my Mac. They were invisible before because the downstream **Araknis Switch2 (`192.168.2.3`)** enforces client isolation. Nanos can reach Core and the gateway but not each other or my Mac. TCP probes on all 10 Nanos (36 ports each) returned zero open ports — Nanos are pure clients, no local API surface.
+- **Newly discovered devices:** Araknis Switch2 (the managed fan-out switch), Luma NVR at `.11`, a third Wattbox PDU at `.110`, a second Lutron device at `.225` (sibling MAC to the main RadioRA2), 9 Ecobee thermostats by room name, 7 Ruckus APs, 8 Rokus.
+
+**Blocker now narrowed to one target:** **Araknis Switch2 admin at `192.168.2.3`**. That's the box with the Nano PoE ports and is the port-mirror target for finally capturing Nano → Core audio. Same credential family as the router probably works; Kofi hasn't confirmed yet.
+
+**Josh Core SSH still unbroken.** Simon tried a few candidate passwords — all denied across every plausible username (root/admin/josh/dealer/installer/svc/ubuntu/debian/pi/simon/berg/etc.). Hypothesis: those creds are for the Josh cloud/dealer portal, not the Debian box's SSH. Kofi's regained dealer access is the likely path when he gets it.
+
+All updates rolled into `memory/home-control/berg-castle-network.md` + `josh-jmnp-protocol.md` + MEMORY.md. Full protocol notes and inventory locked in before we go poking at Switch2.
+
+---
+
 ## What we didn't do (yet)
 
-- Josh Nano mic reverse engineering — partially unblocked. Protocol identified (JMNP), Core discovered, license extracted. Missing: Nano-side traffic, which needs Ruckus switch admin for port mirroring. Details in `memory/home-control/josh-jmnp-protocol.md`.
-- **Ruckus switch admin credentials** — blocking further Nano work. Guess candidates: `admin/wattbox`, `admin/qoreamadeus`, or Simon's family-of-passwords.
+- **Araknis Switch2 admin login** — the ONE remaining blocker for Nano-side traffic capture. Suspected same credential family as router (untested at time of this write-up).
+- Josh Nano audio-path capture — requires Switch2 port mirroring.
+- Josh Core SSH shell — all Simon's `OMEGA`/`Al0ng...` creds denied. Waiting on Kofi's dealer access.
 - Josh Core SSH shell — `qoreamadeus` password didn't work, `wattbox:wattbox` on the WattBox strips got us to a "set default password" screen but we didn't force through.
 - Araknis router (192.168.2.1) admin — `qoreamadeus` didn't work.
 - Luma NVR — isolated camera VLAN, unreachable from this network position.
