@@ -104,9 +104,59 @@ After deploying, tunnel live at `home.bergcastle.com`, Access wall auth working 
 >
 > "This is so fucking cool!!"
 
+## 2026-07-31 — The berg-castle-panel outage, the Sonos broadcast, and the JMNP protocol capture
+
+The morning after the initial build. Multiple threads in one session:
+
+### 07:30 EDT — Panel outage postmortem + hardening
+
+Simon woke to a Cloudflare "unstable" screen on the phone app. Root cause: the plain `node server.js` had died silently overnight. Not memory, not jetsam, not a signal — no crash report at all. Which is the fingerprint of an **unhandled promise rejection or async exception** killing Node without a trace.
+
+Code audit found the smoking gun: `lutron.js` `pressPicoButton()` writes to the Telnet socket from inside a `setTimeout` callback with no try/catch. If the socket died in that 100ms window, the sync throw would kill the process. No `process.on('uncaughtException')` handler anywhere in the codebase.
+
+Shipped in one commit (`076871c`):
+- `process.on('uncaughtException' | 'unhandledRejection' | SIGTERM | SIGINT)` handlers in `server.js` so future failures leave a timestamped stack in the logs instead of dying silently.
+- `pressPicoButton` writes wrapped in try/catch, with socket-identity + `destroyed` guards on the delayed release write.
+- `deploy/com.simon.berg-castle-panel.plist` — a LaunchAgent with `RunAtLoad=true`, `KeepAlive.Crashed=true`, `ThrottleInterval=10s`. Copy to `~/Library/LaunchAgents/` and `launchctl load -w` to install. Verified: killed the process with `kill -9`, launchd respawned it in <1s.
+- Watchdog cron (isolated OpenClaw job) checks `http://localhost:4321/` every 5 minutes and DMs Simon after 2 consecutive failures / on recovery.
+
+Simon locked in a new workspace rule from the incident: **every code change ends with `git push`.** The `0a5ba8b` scenes commit from yesterday had been sitting local-only for 24 hours; today's fix nearly did the same. Rule now in `AGENTS.md` at the top.
+
+Also: added `jony-rhapsody` as a Write collaborator on `the-bergster/berg-castle-panel` so future pushes don't need Simon-in-the-loop.
+
+### 12:40 EDT — First TTS broadcast to a Sonos zone
+
+"Can you use 11labs to create an audio file that says 'Hello Max and Simon, this is Jony in your house' and then broadcast that sound through the sonos speakers in the dining room?"
+
+End-to-end path:
+1. Rediscovered the Sonos fleet via SSDP scan (22 ZonePlayers on `192.168.4.x`, matched yesterday's list).
+2. Pulled each device's `roomName` from `http://<ip>:1400/xml/device_description.xml`. Dining Room = `192.168.4.161` (Sonos Amp).
+3. ElevenLabs REST call to generate a ~4-second MP3. Note: the voice ID in `TOOLS.md` (`pIX7ZNqBMOeINOOOHKAw`, "Jony's voice") is not on this account. Fell back to the default configured in `openclaw.json`: `iP95p4xoKVk53GoZ742B` = "Chris — Charming, Down-to-Earth." TODO reconcile the voice ID mismatch.
+4. Stood up an ephemeral `python3 -m http.server 8765` on the Jony Mac (`192.168.2.100`) to serve the MP3.
+5. Sonos SOAP: `GetVolume` (30) → `SetVolume` (45) → `SetAVTransportURI` (the MP3 URL) → `Play` → poll `GetTransportInfo` until STOPPED → `SetVolume` (30) to restore.
+
+Worked first try. Simon confirmed hearing it out loud. Full script cached at `/tmp/berg-broadcast/play.py` for reference — next step is folding this into the panel as a proper `/api/broadcast` endpoint, but Simon parked that: he's thinking about building a realtime voice layer above me (GPT-Voice-style) rather than one-shot batch TTS.
+
+### 14:10 EDT — Josh Nano reconnaissance via packet capture (planned last session, executed today)
+
+Simon plugged an ethernet cable into the Jony Mac (so I could drive tcpdump directly), and I ran a 90-second capture on `en7` = `192.168.2.175` while he woke a few Nanos.
+
+The Nanos are VLAN-isolated — their unicast traffic never reached the main LAN so we didn't capture wake-word audio. But **the Josh Core (`192.168.2.227`) is on the main LAN and broadcasts every 5 seconds in the clear**. That gave us the crown jewels:
+
+**JMNP — Josh's proprietary network protocol.** Plain JSON over UDP to `255.255.255.255:55055`. Every 5 seconds the Core shouts its identity, license key, hardware type (`secondary.core` — there's a primary somewhere), software version, and building-config sequence number. Zero encryption. Full field-by-field breakdown in `~/.openclaw/workspace/memory/home-control/josh-jmnp-protocol.md`.
+
+Secondary discovery via **mDNS on `_josh-core._tcp` port 9121**. The Core's mDNS advert carries an inventory of every device it knows about, including the six Nanos by MAC-ish jsid + room name (Dining, Lounge, Master Bedroom, Guest Bedrooms, Simons M3, Kitchen) and every Sonos player. Also revealed a `Josh Nimble` device I hadn't seen before.
+
+**The site license key was in the capture** (broadcast in cleartext every 5s). Stashed at `.secrets/josh/josh-license.env` on the Jony Mac. Treat as a credential — anyone broadcasting JMNP with a matching license would (hypothesis) be accepted as a peer. Value redacted from this file after Simon's push (repo is private but private ≠ secret).
+
+Simon's steer at end of session: **document first, then get on the Ruckus switch for port mirroring, then long-running capture during real voice activity to catalogue all `messageType` values.** No spoofing/impersonation attempts until we have a rollback plan.
+
+---
+
 ## What we didn't do (yet)
 
-- Josh Nano mic reverse engineering — parked. Broadcast ports identified (56700 heartbeat, 55055 announcement). Full protocol capture needs port mirroring on the Ruckus switch or ARP-spoofing a Nano.
+- Josh Nano mic reverse engineering — partially unblocked. Protocol identified (JMNP), Core discovered, license extracted. Missing: Nano-side traffic, which needs Ruckus switch admin for port mirroring. Details in `memory/home-control/josh-jmnp-protocol.md`.
+- **Ruckus switch admin credentials** — blocking further Nano work. Guess candidates: `admin/wattbox`, `admin/qoreamadeus`, or Simon's family-of-passwords.
 - Josh Core SSH shell — `qoreamadeus` password didn't work, `wattbox:wattbox` on the WattBox strips got us to a "set default password" screen but we didn't force through.
 - Araknis router (192.168.2.1) admin — `qoreamadeus` didn't work.
 - Luma NVR — isolated camera VLAN, unreachable from this network position.
