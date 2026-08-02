@@ -1035,14 +1035,9 @@ function attachSlider(card) {
     else debounceTimer = setTimeout(fire, 80);
   };
 
-  const onStart = (e) => {
-    dragging = true;
-    slider.classList.add('dragging');
-    const pct = pctFromEvent(e);
-    paint(pct);
-    send(pct);
-    e.preventDefault();
-  };
+  // Move / end handlers only exist while dragging. Attaching them to window
+  // on every mount was leaking listeners on every re-render — which killed
+  // trackpad two-finger scroll performance across the whole app.
   const onMove = (e) => {
     if (!dragging) return;
     const pct = pctFromEvent(e);
@@ -1055,14 +1050,26 @@ function attachSlider(card) {
     slider.classList.remove('dragging');
     if (lastSentLevel !== null) send(lastSentLevel, true);
     STATE.set(id, lastSentLevel);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('mouseup', onEnd);
+    window.removeEventListener('touchend', onEnd);
+  };
+  const onStart = (e) => {
+    dragging = true;
+    slider.classList.add('dragging');
+    const pct = pctFromEvent(e);
+    paint(pct);
+    send(pct);
+    e.preventDefault();
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
   };
 
   slider.addEventListener('mousedown', onStart);
   slider.addEventListener('touchstart', onStart, { passive: false });
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('touchmove', onMove, { passive: false });
-  window.addEventListener('mouseup', onEnd);
-  window.addEventListener('touchend', onEnd);
 }
 
 // Apply an incoming level update to whatever UI is on screen
