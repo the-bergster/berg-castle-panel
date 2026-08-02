@@ -102,8 +102,42 @@ function serveStatic(res, urlPath) {
       '.png': 'image/png',
       '.webmanifest': 'application/manifest+json',
     };
-    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    // Aggressive no-cache: Cloudflare edge + browsers must always hit origin.
+    // Panel is a live control surface — stale code = broken UX.
+    res.writeHead(200, {
+      'Content-Type': types[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'CDN-Cache-Control': 'no-store',
+      'Cloudflare-CDN-Cache-Control': 'no-store',
+    });
     res.end(data);
+  });
+}
+
+// Cache-bust suffix for the index shell so stale Cloudflare edge caches
+// can't reference stale asset filenames. Bumps every process start.
+const BUILD_VERSION = String(Date.now());
+
+function serveIndexHtml(res) {
+  const p = path.join(STATIC_ROOT, 'index.html');
+  fs.readFile(p, 'utf8', (err, html) => {
+    if (err) { res.writeHead(500); res.end('index read fail'); return; }
+    // Inject ?v=<build> onto /app.js and /app.css references.
+    const bumped = html
+      .replace(/href="\/app\.css"/g, `href="/app.css?v=${BUILD_VERSION}"`)
+      .replace(/src="\/app\.js"/g, `src="/app.js?v=${BUILD_VERSION}"`);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'CDN-Cache-Control': 'no-store',
+      'Cloudflare-CDN-Cache-Control': 'no-store',
+      'X-Build-Version': BUILD_VERSION,
+    });
+    res.end(bumped);
   });
 }
 
@@ -113,7 +147,7 @@ const server = http.createServer(async (req, res) => {
 
   // Routes
   if (req.method === 'GET' && (pathname === '/' || pathname === '/room' || pathname.startsWith('/room/'))) {
-    serveStatic(res, 'index.html'); return;
+    serveIndexHtml(res); return;
   }
   if (req.method === 'GET' && pathname === '/manifest.webmanifest') {
     serveStatic(res, 'manifest.webmanifest'); return;
