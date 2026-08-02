@@ -2,6 +2,20 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-02 — Hub landing + Music tab stub
+
+**What changed:**
+- New landing page at `#/`: Hub with two tiles, Music (blue) + Lights (amber). Lights tile shows live "N on · M rooms" count and an amber count badge when lights are on.
+- Lights view moved to `#/lights` (was `#/`). Room detail routes unchanged at `#/room/:id`.
+- Music view added at `#/music` — Sonos placeholder screen with big icon, copy explaining the plan ("Built on Sonos's official Control API"), and a status pill ("Dining Room verified · TTS working").
+- Chevron back buttons on both Lights and Music → Hub.
+- CSS: `.hub-grid`, `.hub-tile`, `.hub-tile-icon/-body/-title/-sub/-badge`, `.music-empty` classes added. Reused existing `.topbar-back` for back nav.
+
+**Why now:** Simon asked (after we agreed *not* to fork the sonos-web/sonos-web repo — it's cold, SOAP/UPnP-based which broke on Sonos S2 firmware, GPL v3) to lay the shell so that Sonos control lives *under* a Music tile in the main Berg Castle app. Foundation for wiring up Sonos's official Control API next.
+
+**Verified:** Puppeteer screenshots at iPhone 390×844 confirm all three routes render with LIVE badge, correct margins, and consistent tile language across Hub → Music and Hub → Lights.
+
+
 ## The trigger
 
 Simon mentioned that Max, his nephew, had asked his agent to explore the local network and look for controllable devices. Simon asked me to try the same.

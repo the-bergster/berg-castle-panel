@@ -58,6 +58,9 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'ss01', 'ss02', 'cv11';
   overscroll-behavior-y: none;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
 }
 
 body {
@@ -73,6 +76,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- App shell ---------- */
 .app { max-width: 900px; margin: 0 auto; }
+#app { width: 100%; max-width: 100vw; overflow-x: hidden; }
 
 .topbar {
   position: sticky; top: 0; z-index: 20;
@@ -411,3 +415,109 @@ a { color: inherit; text-decoration: none; }
 }
 .room-scene:hover { border-color: var(--accent); color: var(--accent-bright); }
 .room-scene:active { transform: scale(0.94); }
+
+/* ---------- Hub (home landing) ---------- */
+.hub-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 16px 16px 24px;
+}
+@media (min-width: 560px) {
+  .hub-grid { grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; }
+}
+
+.hub-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 128px;
+  padding: 22px 22px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+  overflow: hidden;
+  text-align: left;
+  color: var(--text);
+}
+.hub-tile::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 80% at 100% 0%, rgba(255,184,77,0.10) 0%, transparent 60%);
+  opacity: 0; transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+.hub-tile:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+.hub-tile:hover::before { opacity: 1; }
+.hub-tile:active { transform: scale(0.985); }
+
+.hub-tile-icon {
+  flex: 0 0 auto;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-3);
+  border-radius: 16px;
+  color: var(--accent-bright);
+}
+.hub-tile-icon svg { width: 28px; height: 28px; }
+
+.hub-tile-body { flex: 1; min-width: 0; }
+.hub-tile-title {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.hub-tile-sub {
+  font-size: 13px; color: var(--text-dim); letter-spacing: 0.01em;
+}
+
+.hub-tile-badge {
+  position: absolute; top: 18px; right: 20px;
+  min-width: 34px; height: 26px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent);
+  color: #1a1200;
+  font-size: 13px; font-weight: 700;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.hub-tile-badge:empty, .hub-tile:has(.hub-tile-badge:empty) .hub-tile-badge { display: none; }
+
+.hub-music .hub-tile-icon { color: #7ec6ff; background: rgba(126,198,255,0.08); }
+.hub-lights .hub-tile-icon { color: var(--accent-bright); background: rgba(255,184,77,0.08); }
+
+/* ---------- Music (stub) ---------- */
+.music-empty {
+  padding: 60px 24px 40px;
+  text-align: center;
+  color: var(--text-mid);
+}
+.music-empty-icon {
+  width: 96px; height: 96px;
+  margin: 0 auto 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  color: #7ec6ff;
+}
+.music-empty-icon svg { width: 44px; height: 44px; }
+.music-empty-title {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text); margin-bottom: 10px;
+}
+.music-empty-sub {
+  font-size: 14px; line-height: 1.5; color: var(--text-dim);
+  max-width: 340px; margin: 0 auto 24px;
+}
+.music-empty-stats {
+  display: inline-block;
+  padding: 8px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px; color: var(--text-mid);
+  letter-spacing: 0.02em;
+}

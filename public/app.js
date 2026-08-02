@@ -153,12 +153,16 @@ function route() {
   const hash = location.hash.slice(1) || '/';
   currentRoute = hash;
   if (hash === '/' || hash === '') {
+    renderHub();
+  } else if (hash === '/lights') {
     renderHome();
+  } else if (hash === '/music') {
+    renderMusic();
   } else if (hash.startsWith('/room/')) {
     const id = parseInt(hash.split('/')[2], 10);
     renderRoom(id);
   } else {
-    renderHome();
+    renderHub();
   }
   // Scroll top on route change
   window.scrollTo(0, 0);
@@ -170,7 +174,99 @@ function navigate(path) {
 
 window.addEventListener('hashchange', route);
 
-// ---------- Rendering: Home ----------
+// ---------- Rendering: Hub (landing home) ----------
+
+function renderHub() {
+  const totalOn = [...STATE.values()].filter(v => v > 0).length;
+  const totalRoomsOn = ROOMS.rooms.filter(r => roomOnCount(r) > 0).length;
+
+  app.innerHTML = `
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Berg Castle</div>
+        <span class="topbar-sub">Home</span>
+      </div>
+      <div class="conn-badge" id="conn-badge">
+        <span class="dot"></span>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+
+    <div class="hub-grid fade-in">
+      <button class="hub-tile hub-music" data-nav="/music">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Music</div>
+          <div class="hub-tile-sub">Sonos · coming online</div>
+        </div>
+      </button>
+
+      <button class="hub-tile hub-lights" data-nav="/lights">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3v1h6v-1c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Lights</div>
+          <div class="hub-tile-sub">${totalOn === 0 ? 'All off' : `${totalOn} on · ${totalRoomsOn} ${totalRoomsOn === 1 ? 'room' : 'rooms'}`}</div>
+        </div>
+        ${totalOn > 0 ? `<div class="hub-tile-badge">${totalOn}</div>` : ''}
+      </button>
+    </div>
+  `;
+
+  // Wire tiles
+  app.querySelectorAll('[data-nav]').forEach(el => {
+    el.addEventListener('click', () => navigate(el.dataset.nav));
+  });
+
+  connectWS();
+}
+
+// ---------- Rendering: Music (stub) ----------
+
+function renderMusic() {
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="topbar-back" data-back>
+        <span class="chev">‹</span>
+      </button>
+      <div>
+        <div class="topbar-title">Music</div>
+        <span class="topbar-sub">Sonos</span>
+      </div>
+      <div class="conn-badge" id="conn-badge">
+        <span class="dot"></span>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+
+    <div class="music-empty fade-in">
+      <div class="music-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"/>
+          <circle cx="6" cy="18" r="3"/>
+          <circle cx="18" cy="16" r="3"/>
+        </svg>
+      </div>
+      <div class="music-empty-title">Sonos control lands here</div>
+      <div class="music-empty-sub">Rooms, playback, volume, groups. Built on Sonos's official Control API. Wiring up next.</div>
+      <div class="music-empty-stats">Dining Room verified · TTS working</div>
+    </div>
+  `;
+
+  app.querySelector('[data-back]').addEventListener('click', () => navigate('/'));
+  connectWS();
+}
+
+// ---------- Rendering: Lights ----------
 
 function renderHome() {
   const totalOn = [...STATE.values()].filter(v => v > 0).length;
@@ -178,6 +274,9 @@ function renderHome() {
 
   app.innerHTML = `
     <div class="topbar">
+      <button class="topbar-back" data-back-hub>
+        <span class="chev">‹</span>
+      </button>
       <div>
         <div class="topbar-title">Berg Castle</div>
         <span class="topbar-sub">Lights</span>
@@ -227,6 +326,10 @@ function renderHome() {
       `).join('')}
     </div>
   `;
+
+  // Wire back-to-hub
+  const backBtn = app.querySelector('[data-back-hub]');
+  if (backBtn) backBtn.addEventListener('click', () => navigate('/'));
 
   // Wire scenes (Pico + synthetic)
   app.querySelectorAll('.scene').forEach(btn => {
