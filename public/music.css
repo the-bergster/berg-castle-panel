@@ -132,6 +132,17 @@
   display: flex; align-items: center; gap: 7px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.m-zone-name-text {
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Sonos-app "+ N" follower marker — subdued next to the coordinator name. */
+.m-zone-plus {
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-left: 2px;
+}
+.m-zone.is-playing .m-zone-plus { color: var(--m-accent); opacity: 0.85; }
 .m-zone-badge {
   flex: 0 0 auto;
   font-size: 10px; font-weight: 600; letter-spacing: 0.04em;

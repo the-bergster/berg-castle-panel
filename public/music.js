@@ -531,7 +531,7 @@ const Music = (() => {
 
     const signature = JSON.stringify(cards.map((c) => {
       const d = displayTrack(c);
-      return [c.room, c.groupName, c.groupSize, c.state, d.title, d.subtitle, d.art, c.offline, c.model, c.service];
+      return [c.room, c.groupName, c.coordinatorName, c.groupSize, (c.groupMembers || []).join('|'), c.state, d.title, d.subtitle, d.art, c.offline, c.model, c.service];
     }));
     const changed = renderIfChanged(holder, 'zones', signature, () => `
       <div class="m-summary">
@@ -559,8 +559,17 @@ const Music = (() => {
     const playing = isPlaying(r.state);
     const d = displayTrack(r);
 
-    // The second line is context, not a repeat of the first: service and group size
-    // when something is on, hardware when the room is idle.
+    // Match the Sonos app: coordinator name with a "+ N" suffix showing how many
+    // followers are in the group. The badge repeats the total count for scannability,
+    // same as Sonos does.
+    const followers = r.groupSize > 1 ? r.groupSize - 1 : 0;
+    const primaryName = r.groupSize > 1 ? (r.coordinatorName || r.groupName || r.room) : r.room;
+    const nameHtml = followers > 0
+      ? `${esc(primaryName)} <span class="m-zone-plus">+ ${followers}</span>`
+      : esc(r.room);
+
+    // Subline: prefer "Artist · Service · N rooms" when live, otherwise fall back to
+    // model + group size on idle rooms.
     const context = r.offline
       ? 'Unreachable'
       : [
@@ -575,9 +584,9 @@ const Music = (() => {
         ${artHtml(d.art, 'm-zone-art', d.title || r.room)}
         <div class="m-zone-body">
           <div class="m-zone-name">
-            ${esc(r.groupSize > 1 ? r.groupName : r.room)}
+            <span class="m-zone-name-text">${nameHtml}</span>
             ${playing ? '<span class="m-eq"><i></i><i></i><i></i></span>' : ''}
-            ${r.groupSize > 1 ? `<span class="m-zone-badge">${r.groupSize}</span>` : ''}
+            ${r.groupSize > 1 ? `<span class="m-zone-badge" title="${esc((r.groupMembers || []).join(', '))}">${r.groupSize}</span>` : ''}
           </div>
           <div class="m-zone-track">${d.title
             ? esc(d.title)
