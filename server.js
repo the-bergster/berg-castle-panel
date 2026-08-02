@@ -19,6 +19,7 @@ const { LutronClient } = require('./lutron');
 const { loadRooms } = require('./rooms');
 const { loadScenes } = require('./scenes');
 const { listSynthetic, findSynthetic } = require('./synthetic-scenes');
+const sonos = require('./sonos');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -257,6 +258,67 @@ const server = http.createServer(async (req, res) => {
         await lutron.setMany(cmds);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ zone, level, count: cmds.length }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ---- Sonos ----
+  if (req.method === 'GET' && pathname === '/api/sonos/rooms') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      rooms: sonos.CACHE.rooms.map((r) => ({
+        room: r.room,
+        ip: r.coordinators?.[0]?.ip || null,
+        uuid: r.coordinators?.[0]?.uuid || null,
+        model: r.coordinators?.[0]?.model || null,
+        has_sub: (r.subs || []).length > 0,
+      })).filter((r) => r.ip),
+      quick_streams: sonos.QUICK_STREAMS,
+    }));
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/api/sonos/snapshot') {
+    try {
+      const snap = await sonos.snapshot();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ rooms: snap, ts: Date.now() }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/sonos/command') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { room, action, value, uri } = JSON.parse(body);
+        const coord = sonos.coordinatorFor(room);
+        if (!coord) { res.writeHead(404); res.end('{"error":"unknown room"}'); return; }
+        const ip = coord.ip;
+        let result = { room, action, ok: true };
+        switch (action) {
+          case 'play': await sonos.play(ip); break;
+          case 'pause': await sonos.pause(ip); break;
+          case 'stop': await sonos.stop(ip); break;
+          case 'next': await sonos.next(ip); break;
+          case 'previous': await sonos.previous(ip); break;
+          case 'volume': result.volume = await sonos.setVolume(ip, value); break;
+          case 'mute': await sonos.setMute(ip, !!value); result.muted = !!value; break;
+          case 'play_stream':
+            if (!uri) { res.writeHead(400); res.end('{"error":"uri required"}'); return; }
+            await sonos.playStream(ip, uri);
+            break;
+          default:
+            res.writeHead(400); res.end(JSON.stringify({ error: `unknown action: ${action}` })); return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));

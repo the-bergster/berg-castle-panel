@@ -2,6 +2,31 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-02 (later) — Music tab goes real: live Sonos control
+
+**What shipped:**
+- `discover-sonos.mjs` — sweeps `192.168.4.100-199` for Sonos ZonePlayers, parses `device_description.xml` on `:1400`. Result cached to `sonos-rooms.json`. Discovered 22 devices across 20 rooms in <2s.
+- `sonos.js` — dependency-free SOAP client for the ZonePlayer local control protocol. Wraps `RenderingControl:1` (volume/mute), `AVTransport:1` (play/pause/stop/next/prev, GetTransportInfo, GetPositionInfo, SetAVTransportURI), and `ZoneGroupTopology:1`. Includes `snapshot()` → fan-out fetch of all rooms in parallel (~130ms for 19 rooms).
+- `server.js` — 3 new routes:
+  - `GET  /api/sonos/rooms`      → room → IP map + quick-stream presets
+  - `GET  /api/sonos/snapshot`   → per-room live state (volume, transport state, now-playing title/artist)
+  - `POST /api/sonos/command`    → play, pause, stop, next, previous, volume, mute, play_stream
+- `public/app.js` — real `renderMusic()` view. Live room grid with:
+  - Play/pause button per room (round, tints blue when playing)
+  - Volume slider (0-100, optimistic UI, commits on change)
+  - Now-playing card (title + artist/streamContent) when a real track is loaded
+  - 4 quick-play stream chips per room: Jazz, Chill, Ambient, Classical (SomaFM URLs, the format we confirmed works during the network-party session)
+  - Card border/background tints blue when the room is playing
+  - Polls `/api/sonos/snapshot` every 4s while on `#/music`
+- Hub `Music` tile now shows live counts ("3 playing · 19 zones") with a blue count badge when anything is playing.
+
+**Verified end-to-end:** Butler volume round-trip via curl (22 → 15 → 22, all reflected in `/api/sonos/snapshot`). Puppeteer screenshots at 390×844 show 3 rooms playing on the live network at capture time (Grill Patio, Playground, Pool), each rendered with correct state + track title.
+
+**Deliberately not (yet):**
+- Grouping / party-mode (drag-to-group). Sonos groups work via `ZoneGroupTopology` + `SetAVTransportURI` with a `x-rincon:<coordinator-uuid>` URI on the followers — planned as next slice.
+- Streaming service picking (Spotify, Apple Music). Requires OAuth per service. Skipped for MVP.
+- WebSocket push for Sonos state changes. Currently polling. Sonos supports GENA event subscriptions (SUBSCRIBE HTTP verb on the service endpoints); worth wiring when polling load becomes an issue.
+
 ## 2026-08-02 — Hub landing + Music tab stub
 
 **What changed:**

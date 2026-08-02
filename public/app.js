@@ -179,6 +179,8 @@ window.addEventListener('hashchange', route);
 function renderHub() {
   const totalOn = [...STATE.values()].filter(v => v > 0).length;
   const totalRoomsOn = ROOMS.rooms.filter(r => roomOnCount(r) > 0).length;
+  const musicPlaying = SONOS.rooms.filter((r) => sonosIsPlaying(r.state)).length;
+  const musicTotal = SONOS.rooms.length;
 
   app.innerHTML = `
     <div class="topbar">
@@ -203,8 +205,9 @@ function renderHub() {
         </div>
         <div class="hub-tile-body">
           <div class="hub-tile-title">Music</div>
-          <div class="hub-tile-sub">Sonos · coming online</div>
+          <div class="hub-tile-sub">${musicTotal === 0 ? 'Sonos · loading' : musicPlaying === 0 ? `${musicTotal} zones · silent` : `${musicPlaying} playing · ${musicTotal} zones`}</div>
         </div>
+        ${musicPlaying > 0 ? `<div class="hub-tile-badge hub-badge-music">${musicPlaying}</div>` : ''}
       </button>
 
       <button class="hub-tile hub-lights" data-nav="/lights">
@@ -228,9 +231,54 @@ function renderHub() {
   });
 
   connectWS();
+
+  // Load Sonos state so the Music tile shows accurate counts on next re-render.
+  fetchSonos().then(() => { if (currentRoute === '/' || currentRoute === '') renderHub(); });
 }
 
 // ---------- Rendering: Music (stub) ----------
+
+// Music state (separate from Lights `STATE` Map).
+let SONOS = { rooms: [], quick_streams: [], ts: 0 };
+let SONOS_TIMER = null;
+
+async function fetchSonos() {
+  try {
+    const [r, s] = await Promise.all([
+      fetch('/api/sonos/rooms').then((r) => r.json()),
+      fetch('/api/sonos/snapshot').then((r) => r.json()),
+    ]);
+    SONOS = {
+      rooms: (s.rooms || []).map((snap) => {
+        const meta = r.rooms.find((x) => x.room === snap.room) || {};
+        return { ...meta, ...snap };
+      }),
+      quick_streams: r.quick_streams || [],
+      ts: s.ts || Date.now(),
+    };
+  } catch (e) {
+    console.error('[Sonos] fetch failed', e);
+  }
+}
+
+async function sonosCmd(payload) {
+  try {
+    const res = await fetch('/api/sonos/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('sonos cmd failed: ' + res.status);
+    return res.json();
+  } catch (e) {
+    console.error('[Sonos] cmd failed', e);
+    return null;
+  }
+}
+
+function sonosIsPlaying(state) {
+  return state === 'PLAYING' || state === 'TRANSITIONING';
+}
 
 function renderMusic() {
   app.innerHTML = `
@@ -248,22 +296,153 @@ function renderMusic() {
       </div>
     </div>
 
-    <div class="music-empty fade-in">
-      <div class="music-empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 18V5l12-2v13"/>
-          <circle cx="6" cy="18" r="3"/>
-          <circle cx="18" cy="16" r="3"/>
-        </svg>
+    <div class="music-shell fade-in">
+      <div id="music-summary" class="music-summary"></div>
+      <div id="music-rooms" class="music-rooms">
+        <div class="music-loading">Reading rooms…</div>
       </div>
-      <div class="music-empty-title">Sonos control lands here</div>
-      <div class="music-empty-sub">Rooms, playback, volume, groups. Built on Sonos's official Control API. Wiring up next.</div>
-      <div class="music-empty-stats">Dining Room verified · TTS working</div>
     </div>
   `;
 
-  app.querySelector('[data-back]').addEventListener('click', () => navigate('/'));
+  app.querySelector('[data-back]').addEventListener('click', () => {
+    stopMusicPolling();
+    navigate('/');
+  });
+
   connectWS();
+  loadAndRenderMusic();
+  startMusicPolling();
+}
+
+async function loadAndRenderMusic() {
+  await fetchSonos();
+  renderMusicRooms();
+}
+
+function renderMusicRooms() {
+  const summary = document.getElementById('music-summary');
+  const holder = document.getElementById('music-rooms');
+  if (!summary || !holder) return;
+
+  const rooms = SONOS.rooms.slice().sort((a, b) => a.room.localeCompare(b.room));
+  const playingCount = rooms.filter((r) => sonosIsPlaying(r.state)).length;
+
+  summary.innerHTML = `
+    <div class="music-summary-num">${playingCount}</div>
+    <div class="music-summary-label">
+      ${playingCount === 0 ? 'Nothing playing' : `${playingCount === 1 ? 'room' : 'rooms'} playing`}<br>
+      <span style="color:var(--text-dimmer);font-size:11px;letter-spacing:0.05em">${rooms.length} Sonos zones on ${SONOS.quick_streams.length ? 'network' : 'LAN'}</span>
+    </div>
+  `;
+
+  holder.innerHTML = rooms.map(renderMusicRoomCard).join('');
+
+  // Wire per-room controls.
+  holder.querySelectorAll('[data-music-room]').forEach((card) => {
+    const room = card.dataset.musicRoom;
+
+    const playBtn = card.querySelector('[data-mact="toggle"]');
+    if (playBtn) playBtn.addEventListener('click', async () => {
+      const r = SONOS.rooms.find((x) => x.room === room);
+      const nextAction = sonosIsPlaying(r?.state) ? 'pause' : 'play';
+      // Optimistic UI
+      if (r) r.state = nextAction === 'play' ? 'PLAYING' : 'PAUSED_PLAYBACK';
+      renderMusicRooms();
+      await sonosCmd({ room, action: nextAction });
+      fetchSonos().then(renderMusicRooms);
+    });
+
+    const nextBtn = card.querySelector('[data-mact="next"]');
+    if (nextBtn) nextBtn.addEventListener('click', async () => {
+      await sonosCmd({ room, action: 'next' });
+      setTimeout(() => fetchSonos().then(renderMusicRooms), 400);
+    });
+
+    const volSlider = card.querySelector('[data-mact="volume"]');
+    if (volSlider) {
+      volSlider.addEventListener('input', (e) => {
+        // Local echo only; commit on change.
+        const num = card.querySelector('[data-vol-label]');
+        if (num) num.textContent = e.target.value;
+      });
+      volSlider.addEventListener('change', async (e) => {
+        const v = parseInt(e.target.value, 10);
+        const r = SONOS.rooms.find((x) => x.room === room);
+        if (r) r.volume = v;
+        await sonosCmd({ room, action: 'volume', value: v });
+      });
+    }
+
+    card.querySelectorAll('[data-stream-uri]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const uri = btn.dataset.streamUri;
+        const r = SONOS.rooms.find((x) => x.room === room);
+        if (r) r.state = 'TRANSITIONING';
+        renderMusicRooms();
+        await sonosCmd({ room, action: 'play_stream', uri });
+        setTimeout(() => fetchSonos().then(renderMusicRooms), 700);
+      });
+    });
+  });
+}
+
+function renderMusicRoomCard(r) {
+  const playing = sonosIsPlaying(r.state);
+  const paused = r.state === 'PAUSED_PLAYBACK';
+  const stateLabel = playing ? 'Playing' : paused ? 'Paused' : 'Idle';
+  const trackTitle = r.track?.title || '';
+  const trackArtist = r.track?.artist || r.track?.streamContent || '';
+  const nowPlaying = playing || paused;
+  const isTtsFile = trackTitle && /\.(mp3|wav|m4a)$/i.test(trackTitle) && !trackArtist;
+
+  const streams = SONOS.quick_streams.map((s) => `
+    <button class="music-stream-chip" data-stream-uri="${escapeHtml(s.uri)}">${s.emoji} ${escapeHtml(s.label)}</button>
+  `).join('');
+
+  return `
+    <section class="music-card ${playing ? 'is-playing' : ''}" data-music-room="${escapeHtml(r.room)}">
+      <div class="music-card-head">
+        <div class="music-card-title">
+          <div class="music-card-room">${escapeHtml(r.room)}</div>
+          <div class="music-card-state">${stateLabel}${r.model ? ` · ${escapeHtml(r.model)}` : ''}</div>
+        </div>
+        <button class="music-play-btn ${playing ? 'is-on' : ''}" data-mact="toggle" title="${playing ? 'Pause' : 'Play'}">
+          ${playing
+            ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+          }
+        </button>
+      </div>
+
+      ${nowPlaying && !isTtsFile && trackTitle ? `
+        <div class="music-now">
+          <div class="music-now-title">${escapeHtml(trackTitle)}</div>
+          ${trackArtist ? `<div class="music-now-artist">${escapeHtml(trackArtist)}</div>` : ''}
+        </div>
+      ` : ''}
+
+      <div class="music-vol">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="music-vol-icon"><path d="M11 5L6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <input type="range" min="0" max="100" value="${r.volume ?? 0}" data-mact="volume" class="music-vol-slider"/>
+        <span class="music-vol-num" data-vol-label>${r.volume ?? 0}</span>
+      </div>
+
+      <div class="music-streams">${streams}</div>
+    </section>
+  `;
+}
+
+function startMusicPolling() {
+  stopMusicPolling();
+  SONOS_TIMER = setInterval(async () => {
+    if (currentRoute !== '/music') return;
+    await fetchSonos();
+    renderMusicRooms();
+  }, 4000);
+}
+
+function stopMusicPolling() {
+  if (SONOS_TIMER) { clearInterval(SONOS_TIMER); SONOS_TIMER = null; }
 }
 
 // ---------- Rendering: Lights ----------
