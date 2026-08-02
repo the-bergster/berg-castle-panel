@@ -58,10 +58,11 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'ss01', 'ss02', 'cv11';
   overscroll-behavior-y: none;
-  overflow-x: hidden;
   width: 100%;
-  max-width: 100vw;
 }
+
+/* overflow-x on body only — not on html — so trackpad scroll stays intact. */
+body { overflow-x: hidden; }
 
 body {
   padding-top: var(--safe-top);
@@ -76,7 +77,8 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- App shell ---------- */
 .app { max-width: 900px; margin: 0 auto; }
-#app { width: 100%; max-width: 100vw; overflow-x: hidden; }
+/* #app must NOT create its own scroll container — let the window scroll. */
+#app { width: 100%; max-width: 100vw; }
 
 .topbar {
   position: sticky; top: 0; z-index: 20;
