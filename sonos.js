@@ -200,10 +200,72 @@ async function setAvTransportUri(ip, uri, metadata = '') {
   );
 }
 
+// Seek to a time position within the current track. Position is HH:MM:SS.
+async function seek(ip, position) {
+  await avTransport(
+    ip,
+    'Seek',
+    `<InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>${xmlEsc(position)}</Target>`
+  );
+}
+
 // Play a stream on a room in one shot: set URI, then play.
 async function playStream(ip, uri) {
   await setAvTransportUri(ip, uri);
   await play(ip);
+}
+
+// Capture the full pre-broadcast state of a room so we can restore it later.
+// Grabs URI, raw metadata, transport state, volume, and playback position.
+async function captureState(ip) {
+  const [ti, piXml, volume] = await Promise.all([
+    getTransportInfo(ip).catch(() => null),
+    // GetPositionInfo directly to grab RAW TrackMetaData for accurate restore.
+    avTransport(ip, 'GetPositionInfo', '<InstanceID>0</InstanceID>').catch(() => ''),
+    getVolume(ip).catch(() => null),
+  ]);
+  const trackUri = pickText(piXml || '', 'TrackURI') || '';
+  const trackMeta = pickText(piXml || '', 'TrackMetaData') || '';
+  const relTime = pickText(piXml || '', 'RelTime') || '0:00:00';
+  return {
+    ip,
+    state: ti?.state || 'STOPPED',
+    volume: volume ?? 0,
+    track_uri: trackUri,
+    track_metadata: trackMeta,
+    position: relTime,
+    captured_at: Date.now(),
+  };
+}
+
+// Restore a previously-captured state. Best-effort; individual step failures
+// don't abort the whole restore.
+async function restoreState(state) {
+  const { ip } = state;
+  // If there was no URI loaded before, just stop + set volume and leave it.
+  if (!state.track_uri) {
+    await stop(ip).catch(() => {});
+    if (typeof state.volume === 'number') await setVolume(ip, state.volume).catch(() => {});
+    return { ip, restored: true, note: 'no prior URI, left stopped' };
+  }
+  try {
+    await setAvTransportUri(ip, state.track_uri, state.track_metadata);
+  } catch (e) {
+    return { ip, restored: false, error: `SetAVTransportURI failed: ${e.message}` };
+  }
+  // Seek back to where we were. Some URIs (radio streams) reject seek — that's ok.
+  if (state.position && state.position !== '0:00:00') {
+    await seek(ip, state.position).catch(() => {});
+  }
+  // Restore volume before hitting play so the resume doesn't blast the room.
+  if (typeof state.volume === 'number') {
+    await setVolume(ip, state.volume).catch(() => {});
+  }
+  // Only resume playback if it was playing before we hijacked it.
+  if (state.state === 'PLAYING' || state.state === 'TRANSITIONING') {
+    await play(ip).catch(() => {});
+  }
+  return { ip, restored: true };
 }
 
 // Fetch a snapshot of everything: volume + state + track — for all rooms in parallel.
@@ -257,10 +319,13 @@ module.exports = {
   stop,
   next,
   previous,
+  seek,
   getTransportInfo,
   getPositionInfo,
   setAvTransportUri,
   playStream,
   snapshot,
+  captureState,
+  restoreState,
   QUICK_STREAMS,
 };

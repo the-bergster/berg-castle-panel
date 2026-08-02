@@ -479,6 +479,7 @@ let INTERCOM = {
   status: 'idle',    // 'idle' | 'recording' | 'uploading' | 'ready' | 'broadcasting' | 'sent' | 'error'
   error: null,
   volume: 40,
+  restore: true,     // resume whatever was playing after the broadcast ends
 };
 
 function renderIntercom() {
@@ -523,6 +524,15 @@ function renderIntercom() {
         <input type="range" min="0" max="100" value="${INTERCOM.volume}" id="intercom-volume" class="music-vol-slider"/>
         <span class="music-vol-num" id="intercom-vol-num">${INTERCOM.volume}</span>
       </div>
+
+      <label class="intercom-toggle">
+        <div class="intercom-toggle-body">
+          <div class="intercom-toggle-title">Restore previous audio</div>
+          <div class="intercom-toggle-sub">Resume whatever was playing when the message ends</div>
+        </div>
+        <input type="checkbox" id="intercom-restore" ${INTERCOM.restore ? 'checked' : ''}/>
+        <span class="intercom-toggle-switch"></span>
+      </label>
 
       <div class="intercom-record-panel">
         <div id="intercom-status" class="intercom-status">Ready</div>
@@ -610,6 +620,12 @@ function wireIntercomControls() {
   // Record button.
   const recBtn = document.getElementById('intercom-record-btn');
   if (recBtn) recBtn.addEventListener('click', toggleIntercomRecording);
+
+  // Restore toggle.
+  const restoreEl = document.getElementById('intercom-restore');
+  if (restoreEl) {
+    restoreEl.addEventListener('change', (e) => { INTERCOM.restore = e.target.checked; });
+  }
 
   // Cancel + Send.
   document.getElementById('intercom-cancel')?.addEventListener('click', discardIntercomRecording);
@@ -744,6 +760,7 @@ async function sendIntercomBroadcast() {
         recording_id: INTERCOM.recording.id,
         rooms: [...INTERCOM.selected],
         volume: INTERCOM.volume,
+        restore: INTERCOM.restore,
       }),
     });
     if (!res.ok) throw new Error('broadcast failed: ' + res.status);

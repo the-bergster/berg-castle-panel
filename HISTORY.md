@@ -2,6 +2,29 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-02 (later, still `feature/intercom`) — Restore previous audio
+
+**What shipped:**
+- `sonos.captureState(ip)` → snapshots `{ state, volume, track_uri, track_metadata, position }` before we hijack a zone.
+- `sonos.restoreState(state)` → puts everything back: SetAVTransportURI + Seek to saved position + SetVolume + Play (only if it was PLAYING before). Group-follower URIs (`x-rincon:...`) survive intact so grouped zones rejoin their group.
+- Broadcast endpoint now:
+  1. Captures each target zone's state before firing
+  2. Broadcasts the recording
+  3. Schedules restore at `duration_ms + 800ms` buffer via `setTimeout().unref()`
+- Client: green iOS-style toggle on the intercom screen, ON by default: *"Restore previous audio — Resume whatever was playing when the message ends."* Sends `restore: <bool>` to the API.
+- `intercom.js` now calls `ffprobe` on the transcoded MP3 to store `duration_ms`, which the server uses to time the restore precisely.
+
+**Verified end-to-end just now against 3 different priors:**
+- *Butler* (STOPPED, no URI, vol 22) → broadcast at vol 18 → restored to STOPPED at vol 22. ✅
+- *Grill Patio* (PLAYING as group-follower, vol 41) → broadcast at vol 18 → restored to PLAYING same group, vol 41. ✅
+- *Kitchen* (STOPPED with Spotify track pre-loaded, vol 37) → broadcast at vol 18 → URI restored to same Spotify track, vol 37, still STOPPED. ✅
+
+**Edge cases handled:**
+- No prior URI → leaves zone STOPPED at original volume.
+- Radio streams that reject Seek → caught and ignored, playback still resumes.
+- Individual restore failures → logged, don't block other zones.
+- `restore: false` explicit opt-out supported.
+
 ## 2026-08-02 (evening, branch `feature/intercom`) — Intercom tile + walkie-talkie broadcast
 
 **What shipped:**

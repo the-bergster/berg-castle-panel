@@ -347,15 +347,28 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (c) => (body += c));
     req.on('end', async () => {
       try {
-        const { recording_id, rooms, volume } = JSON.parse(body);
+        const { recording_id, rooms, volume, restore } = JSON.parse(body);
         const rec = intercom.getRecording(recording_id);
         if (!rec) { res.writeHead(404); res.end('{"error":"unknown recording"}'); return; }
         if (!Array.isArray(rooms) || rooms.length === 0) {
           res.writeHead(400); res.end('{"error":"rooms[] required"}'); return;
         }
         const url = intercom.fullUrlFor(rec);
-        const results = await Promise.all(rooms.map(async (room) => {
-          const coord = sonos.coordinatorFor(room);
+        const shouldRestore = restore !== false; // default ON
+
+        // 1. Capture pre-broadcast state per room (only if we plan to restore).
+        const roomCoords = rooms.map((r) => ({ room: r, coord: sonos.coordinatorFor(r) }));
+        let preStates = null;
+        if (shouldRestore) {
+          preStates = await Promise.all(roomCoords.map(async ({ room, coord }) => {
+            if (!coord) return null;
+            try { return { room, state: await sonos.captureState(coord.ip) }; }
+            catch (e) { console.warn(`[Intercom] captureState failed for ${room}: ${e.message}`); return null; }
+          }));
+        }
+
+        // 2. Fire the broadcast in parallel.
+        const results = await Promise.all(roomCoords.map(async ({ room, coord }) => {
           if (!coord) return { room, ok: false, error: 'unknown room' };
           try {
             if (typeof volume === 'number') {
@@ -367,11 +380,39 @@ const server = http.createServer(async (req, res) => {
             return { room, ok: false, error: e.message };
           }
         }));
+
+        // 3. Schedule the restore. We know duration_ms from ffprobe; add a small
+        //    buffer so Sonos actually finishes playback before we swap the URI back.
+        let restoreScheduledAt = null;
+        if (shouldRestore && preStates) {
+          const durationMs = rec.duration_ms || 8000;
+          const buffer = 800;
+          const delay = durationMs + buffer;
+          restoreScheduledAt = Date.now() + delay;
+          setTimeout(async () => {
+            const restoreResults = await Promise.all(preStates.map(async (entry) => {
+              if (!entry) return null;
+              try {
+                const out = await sonos.restoreState(entry.state);
+                console.log(`[Intercom] restored ${entry.room}:`, out);
+                return { room: entry.room, ...out };
+              } catch (e) {
+                console.error(`[Intercom] restore failed for ${entry.room}:`, e.message);
+                return { room: entry.room, restored: false, error: e.message };
+              }
+            }));
+            console.log('[Intercom] restore complete:', restoreResults.filter(Boolean).length, 'rooms');
+          }, delay).unref();
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           recording_id, url, rooms: results,
           successful: results.filter((r) => r.ok).length,
           failed: results.filter((r) => !r.ok).length,
+          duration_ms: rec.duration_ms,
+          restore: shouldRestore,
+          restore_scheduled_at: restoreScheduledAt,
         }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

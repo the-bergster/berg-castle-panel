@@ -60,6 +60,27 @@ function pruneOldRecordings() {
   writeManifest(m);
 }
 
+// Probe duration of an audio file via ffprobe. Returns milliseconds, or null.
+function probeDurationMs(filepath) {
+  return new Promise((resolve) => {
+    const args = [
+      '-hide_banner', '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filepath,
+    ];
+    const ff = spawn('/opt/homebrew/bin/ffprobe', args);
+    let out = '';
+    ff.stdout.on('data', (c) => (out += c.toString()));
+    ff.on('error', () => resolve(null));
+    ff.on('close', (code) => {
+      if (code !== 0) return resolve(null);
+      const secs = parseFloat(out.trim());
+      resolve(isFinite(secs) ? Math.round(secs * 1000) : null);
+    });
+  });
+}
+
 // Transcode arbitrary browser-recorded audio (webm/opus, mp4/aac, etc.) into
 // MP3 so Sonos will play it reliably across all firmware/model variants.
 function transcodeToMp3(inputPath, outputPath) {
@@ -115,12 +136,14 @@ async function saveRecording(buffer, mimeType) {
   }
 
   const stats = fs.statSync(filepath);
+  const durationMs = await probeDurationMs(filepath);
   const meta = {
     id,
     filename,
     mime_type: 'audio/mpeg',
     source_mime: mimeType,
     size_bytes: stats.size,
+    duration_ms: durationMs,
     created_at: Date.now(),
     url_path: `/recordings/${filename}`,
   };
