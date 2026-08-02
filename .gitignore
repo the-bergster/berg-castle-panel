@@ -6,3 +6,7 @@ node_modules
 .env
 .env.local
 /recordings/
+
+# Music service credentials — never commit. Copy sonos-config.example.json instead.
+sonos-config.json
+.secrets/

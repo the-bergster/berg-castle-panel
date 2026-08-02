@@ -61,7 +61,11 @@ html, body {
   width: 100%;
 }
 
-/* overflow-x on body only — not on html — so trackpad scroll stays intact. */
+/* Horizontal-overflow guard belongs on <body>, never on <html>.
+ * Setting overflow-x on the root element forces the browser to compute overflow-y
+ * as something other than visible, and on macOS Chrome/Safari that silently kills
+ * wheel-to-window scrolling — the page has 1900px of content and simply refuses to
+ * move. Scoping it to body keeps the guard and leaves the viewport scrollable. */
 body { overflow-x: hidden; }
 
 body {
@@ -77,7 +81,8 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------- App shell ---------- */
 .app { max-width: 900px; margin: 0 auto; }
-/* #app must NOT create its own scroll container — let the window scroll. */
+/* No overflow-x here either: it makes #app its own scroll container, and since #app
+ * is taller than the viewport the wheel then has nowhere to go. body owns the guard. */
 #app { width: 100%; max-width: 100vw; }
 
 .topbar {

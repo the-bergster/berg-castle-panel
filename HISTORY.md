@@ -2,6 +2,39 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-02 (evening) — Merge `sonos-parity` (Opus 5.0) into intercom branch
+
+**What arrived:** Opus 5.0's `sonos-parity` branch, built from `3af8046` in parallel with the intercom work. 5 commits, 24 files, +7332/−539. Full rewrite of the Sonos half:
+- `sonos.js` (flat, IP-sweep-based) replaced by `sonos/` (topology-aware modular subsystem: `topology.js`, `player.js`, `library.js`, `events.js`, `device.js`, `soap.js`, `search.js`, `didl.js`, `presets.js`, `api.js`).
+- Topology now sourced live from `GetZoneGroupState` — the phantom "Sub" room and duplicated coordinators for bonded pairs disappear.
+- Group-coordinator routing rule enforced everywhere: transport + queue to the coordinator, volume + EQ to the individual player.
+- GENA event push instead of polling (fell back to polling if callback host isn't reachable). Boot line: `[Sonos] GENA: 40/40 subscriptions established` + `live updates via GENA push`.
+- Spotify Web API bridge for catalog search (S2 firmware locked local search endpoints).
+- Queue management, grouping, album art, per-model EQ, sleep timers, line-in, TV-input restore, real 19-room / 17-group live view.
+- Album art proxied through `/api/sonos/art?u=...`. Now-playing per room with progress ticked client-side at 60fps between server updates.
+
+**Merge conflicts, resolved:**
+1. `.gitignore` — combined `/recordings/` from intercom with `sonos-config.json` + `.secrets/` from parity.
+2. `public/app.css` — both branches independently arrived at the same scroll fix (`overflow-x` on `body` only, off `html` and `#app`). Took parity's version, better comments.
+3. `public/app.js` — router (kept `/intercom` route alongside `/music`), Hub tile paint (took parity's `paintHubMusicTile()` approach which avoids the re-render loop I patched earlier), and dropped my inline `renderMusic`/`SONOS`/`fetchSonos` etc. in favour of the new `Music` module in `public/music.js`.
+4. `server.js` — imports: kept parity's `SonosSystem` + `sonos/api`, added `intercom`.
+5. `sonos.js` — deleted (parity replaced it with the `sonos/` directory). `require('./sonos')` now resolves to `sonos/index.js`.
+
+**Retired:** `sonos-rooms.json` (static IP sweep, no longer read anywhere) and `discover-sonos.mjs` (the script that built it). Live topology from `GetZoneGroupState` is authoritative.
+
+**New adapter:** `sonos/intercom-bridge.js`. The Intercom feature needs raw per-player transport commands (each target zone becomes independent for the duration of a message, then rejoins its group during restore). Bridge exposes `playerFor`, `captureState`, `playAnnouncement`, `restoreState` on top of `sonos/device.js`. Server's `/api/intercom/broadcast` now uses `sonos.intercom.*` instead of the retired flat SOAP client.
+
+**Verified end-to-end after merge:**
+- Boot output matches Opus's expected healthy start: 19 rooms in 17 groups, Spotify linked, GENA 40/40, push mode.
+- `/api/sonos/search?q=hozier` returns 10 tracks, first is "Too Sweet — Hozier".
+- `/api/sonos/favorites` returns 13 items.
+- Intercom broadcast to Butler: captured pre-state (STOPPED, vol 22) → broadcast at vol 20 → restored to STOPPED at vol 22. Works over the new adapter.
+- Puppeteer screenshots confirm all four routes render (Hub with 3 tiles, Music with 19-room grid + album art + now-playing bar, Intercom with room checkboxes + restore toggle, Lights unchanged).
+
+**Spotify credentials:** copied `sonos-config.json` (with real client_id/client_secret) into repo root, `chmod 600`. Verified gitignored before commit. `sonos-config.example.json` remains the committed template.
+
+**Sourced files:** the `sonos/` subsystem was authored by Opus 5.0 on Simon's Mac and delivered as a git bundle (`sonos-parity.bundle`, 5 commits, complete history). Merge preserved full authorship in the merge base.
+
 ## 2026-08-02 (later, still `feature/intercom`) — Restore previous audio
 
 **What shipped:**
@@ -276,3 +309,106 @@ All updates rolled into `memory/home-control/berg-castle-network.md` + `josh-jmn
 ## Architectural takeaway
 
 The endgame won't be "Lutron app" or "Josh app" — it's this panel, integrating Lutron + Sonos + Ecobee + eventually Luma cameras and Josh Nano mics — a single Berg Castle app that owns the whole house at direct-hardware speed, works over the internet, feels native. Today we hit the lights + scenes milestone. Everything else stacks on top of the same architecture.
+
+---
+
+## 2026-08-02 — Sonos: from stub to feature parity
+
+Simon handed the Music tab over with the Lutron side already flawless. The Sonos half
+was a working stub: a list of rooms, play/pause, a volume slider and four SomaFM chips.
+This session took it to something that stands next to the real Sonos app.
+
+### The thing that was quietly broken
+
+`sonos.js` read `sonos-rooms.json` — a snapshot from an IP sweep — and sent every command
+to the room's own IP. That works right up until two rooms are grouped, and at the time
+of writing Pool + Grill Patio + Playground were grouped and playing. In that state:
+
+- Pool reported no track at all, because Pool is not the coordinator; Playground is.
+- Transport commands aimed at Pool would fail with UPnP 1023 or split the group.
+- The sweep had also invented a phantom room called "Sub" (the Master TV's bonded
+  subwoofer answers `device_description.xml` on its own IP) and given Lounge and
+  Master TV two "coordinators" each (their bonded surrounds do the same).
+
+The fix is to stop guessing and ask the household: `GetZoneGroupState` returns the whole
+topology from any single speaker, with bonded satellites nested as `<Satellite Invisible="1">`
+so they fall out naturally. 19 real rooms, live grouping, correct coordinators.
+`sonos/player.js` now owns the one rule that matters: **transport and queue go to the
+group coordinator, volume and EQ go to the individual player.**
+
+### Search: the interesting dead end
+
+Spent real effort trying to make the players search their own catalogs. They cannot,
+and it is worth writing down exactly how that was established:
+
+- `GetSearchCapabilities` → empty string
+- UPnP `Search` → UPnP 401, not implemented
+- Browsing a third-party service container, using an ID lifted from Simon's *own*
+  Apple Music favourite, in ten encodings → UPnP 701 every time
+- `GetSessionId` for Spotify (12) and Apple Music (204) → UPnP 806
+- `/status/accounts`, the endpoint SoCo used to read service tokens on S1 → empty on S2
+- Local library `A:ALBUM` / `A:TRACKS` → 0, no NAS share indexed
+
+On S2 Sonos moved catalog browse and search into their cloud. The speaker is a playback
+endpoint: hand it a URI and it plays, but it will not tell you what exists.
+
+So the panel does what Sonos's cloud does — searches Spotify's API itself and synthesises
+the URI and DIDL metadata. Simon created a free Spotify app mid-session. The formats were
+derived from his own favourites and queue rather than from folklore:
+
+```
+track     x-sonos-spotify:spotify%3atrack%3a<ID>?sid=12&flags=8232&sn=7
+album     x-rincon-cpcontainer:1004204cspotify%3aalbum%3a<ID>?sid=12&flags=8268&sn=7
+playlist  x-rincon-cpcontainer:1006206cspotify%3aplaylist%3a<ID>?sid=12&flags=8300&sn=7
+desc      SA_RINCON<sid*256 + 7>_X_#Svc<sid*256 + 7>-0-Token
+```
+
+That `sid*256 + 7` rule was checked against three services in his household —
+Spotify 12→3079, Apple Music 204→52231, Sonos Radio 303→77575 — before being trusted.
+The metadata item id turned out to be `1003`/`1004`/`1006` followed by the flags value
+in hex. `sid` and `sn` are now read off live content at startup, so re-linking Spotify
+cannot silently break playback.
+
+The decisive test was silent: enqueue a searched track on the Lounge (which was on TV,
+so nothing was interrupted) and see whether the *player* resolves it. It came back
+"Miles Davis · Kind Of Blue (Legacy Edition) · 9:22" with real album art — the speaker
+had gone to Spotify and looked it up, which only happens for a well-formed URI.
+
+### Real-time
+
+The players push state to us now instead of being polled. Our server exposes a NOTIFY
+endpoint and subscribes each player's AVTransport and RenderingControl to it, plus
+ZoneGroupTopology and ContentDirectory once for the household — 40 subscriptions.
+This was not a given: the speakers sit on VLAN 2 and the server on VLAN 1, so
+reachability is *verified* at startup by waiting for the initial NOTIFY, with a
+transparent fall back to adaptive polling if it never arrives. It arrived: 40/40.
+
+### Bugs found by looking at the screen
+
+- A stopped player still reports whatever it last held, so idle rooms were advertising
+  stale TTS filenames like `0e87edab84b1.mp3` as if they were playing.
+- The Lounge Arc on TV audio read as "Idle" while audibly playing.
+- Internet radio reports its stream mount (`groovesalad-128-mp3`) as the track title.
+- `connectWS()` opened a fresh socket on every render without closing the old one. One
+  browser tab had the server logging 50+ connected clients; each broadcast went out
+  once per render since page load. Pre-existing, now idempotent.
+- Sonos sometimes serves a queue entry with nothing but a res URI and album art — no
+  title, no artist. The track id is still in the URI, so those rows are now repaired
+  from Spotify. (Its *batch* `/v1/tracks?ids=` endpoint answers 403 under Client
+  Credentials while the single-track endpoint works; and search `limit` is capped at
+  10, not the documented 50, on the default quota tier. Both found the hard way.)
+- `NrTracks` is not the queue length. It describes whatever is loaded — it reads 1 when
+  the transport points at a single track, even with 100 tracks in the room's queue.
+
+### Verified against the live house
+
+Reorder arithmetic both directions (the `InsertBefore` off-by-one) on the Lounge's empty
+queue; stream, container and next playback audibly on the Workshop at volume 8, restored
+clean each time. The Pool group was never touched — Dovile and her friends were out there.
+
+### Still open
+
+- Apple Music search would need a paid Apple Developer account for a MusicKit token.
+- Three favourites are cloud "shortcuts" with an empty `res` and are listed but not
+  playable from here.
+- Ecobee, cameras and the Josh Nano mics remain untouched.
