@@ -1,0 +1,47 @@
+{
+  "_comment": [
+    "Copy this file to sonos-config.json and fill in your credentials.",
+    "sonos-config.json is gitignored — secrets never land in the repo.",
+    "Every value here is optional; the app degrades gracefully without it.",
+    "Environment variables of the same name (SPOTIFY_CLIENT_ID, etc.) override this file."
+  ],
+
+  "spotify": {
+    "_comment": [
+      "Free Spotify developer app — enables catalog search.",
+      "1. developer.spotify.com/dashboard -> Create app",
+      "2. Redirect URI: http://127.0.0.1:4321/callback  (must be the IP literal,",
+      "   Spotify rejects 'localhost'). It is never actually used — we use the",
+      "   Client Credentials flow, which needs no user login.",
+      "3. Check 'Web API', save, then Settings -> copy Client ID and Client Secret.",
+      "",
+      "sonos_sid / sonos_sn identify YOUR household's Spotify account linkage and are",
+      "auto-detected from the live queue at startup. Only set them to override."
+    ],
+    "client_id": "",
+    "client_secret": "",
+    "market": "US",
+    "sonos_sid": null,
+    "sonos_sn": null
+  },
+
+  "household": {
+    "_comment": [
+      "seed_ips: speakers used to bootstrap topology discovery. Any one reachable",
+      "speaker is enough — the rest are learned from ZoneGroupState. Leave empty to",
+      "use SSDP multicast discovery (may not cross VLANs).",
+      "",
+      "protected_rooms: zones this panel will refuse to send disruptive commands to.",
+      "Useful for a TV zone you never want a phone tap to hijack. Empty = no guards."
+    ],
+    "seed_ips": ["192.168.4.113", "192.168.4.138", "192.168.4.161"],
+    "subnet_scan": "192.168.4",
+    "protected_rooms": []
+  },
+
+  "ui": {
+    "_comment": "Rooms listed here sort to the top of the Music zone list.",
+    "favorite_rooms": ["Kitchen", "Lounge", "Master Bed"],
+    "default_group_volume_step": 4
+  }
+}

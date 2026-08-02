@@ -19,7 +19,8 @@ const { LutronClient } = require('./lutron');
 const { loadRooms } = require('./rooms');
 const { loadScenes } = require('./scenes');
 const { listSynthetic, findSynthetic } = require('./synthetic-scenes');
-const sonos = require('./sonos');
+const { SonosSystem } = require('./sonos');
+const sonosApi = require('./sonos/api');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -39,6 +40,22 @@ lutron.on('change', ({ id, level, prev }) => {
   broadcast({ type: 'state', id, level });
 });
 lutron.connect().catch((e) => console.error('[Lutron] initial connect error:', e.message));
+
+// ---- Sonos ----
+// The Music half is self-contained: it discovers its own topology, subscribes to
+// player events, and pushes changes to browsers over the same WebSocket the Lights
+// half uses. A Sonos failure must never take the Lights half down, so every hook
+// here is defensive.
+const sonos = new SonosSystem({ port: PORT });
+
+sonos.on('transport', (evt) => broadcast({ type: 'sonos:transport', ...evt }));
+sonos.on('rendering', (evt) => broadcast({ type: 'sonos:rendering', ...evt }));
+sonos.on('topology', () => broadcast({ type: 'sonos:topology', topology: sonos.topology.toJSON() }));
+sonos.on('content', (which) => broadcast({ type: 'sonos:content', ...which }));
+sonos.on('snapshot', ({ changed }) => {
+  // Under polling this is the only change signal; under push it is a slow safety net.
+  if (changed && changed.length) broadcast({ type: 'sonos:rooms', rooms: changed });
+});
 
 // ---- WebSocket ----
 const clients = new Set();
@@ -127,7 +144,9 @@ function serveIndexHtml(res) {
     // Inject ?v=<build> onto /app.js and /app.css references.
     const bumped = html
       .replace(/href="\/app\.css"/g, `href="/app.css?v=${BUILD_VERSION}"`)
-      .replace(/src="\/app\.js"/g, `src="/app.js?v=${BUILD_VERSION}"`);
+      .replace(/href="\/music\.css"/g, `href="/music.css?v=${BUILD_VERSION}"`)
+      .replace(/src="\/app\.js"/g, `src="/app.js?v=${BUILD_VERSION}"`)
+      .replace(/src="\/music\.js"/g, `src="/music.js?v=${BUILD_VERSION}"`);
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -160,6 +179,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && pathname === '/app.css') {
     serveStatic(res, 'app.css'); return;
+  }
+  if (req.method === 'GET' && pathname === '/music.js') {
+    serveStatic(res, 'music.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/music.css') {
+    serveStatic(res, 'music.css'); return;
   }
   if (req.method === 'GET' && pathname === '/favicon.svg') {
     serveStatic(res, 'favicon.svg'); return;
@@ -301,64 +326,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- Sonos ----
-  if (req.method === 'GET' && pathname === '/api/sonos/rooms') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      rooms: sonos.CACHE.rooms.map((r) => ({
-        room: r.room,
-        ip: r.coordinators?.[0]?.ip || null,
-        uuid: r.coordinators?.[0]?.uuid || null,
-        model: r.coordinators?.[0]?.model || null,
-        has_sub: (r.subs || []).length > 0,
-      })).filter((r) => r.ip),
-      quick_streams: sonos.QUICK_STREAMS,
-    }));
+  // Players POST their GENA event notifications here. This must be checked before
+  // anything else because NOTIFY is not a method the rest of the router expects.
+  if (req.method === 'NOTIFY' && pathname === '/sonos/notify') {
+    sonos.events.handleNotify(req, res);
     return;
   }
-  if (req.method === 'GET' && pathname === '/api/sonos/snapshot') {
-    try {
-      const snap = await sonos.snapshot();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ rooms: snap, ts: Date.now() }));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-  if (req.method === 'POST' && pathname === '/api/sonos/command') {
-    let body = '';
-    req.on('data', (c) => (body += c));
-    req.on('end', async () => {
-      try {
-        const { room, action, value, uri } = JSON.parse(body);
-        const coord = sonos.coordinatorFor(room);
-        if (!coord) { res.writeHead(404); res.end('{"error":"unknown room"}'); return; }
-        const ip = coord.ip;
-        let result = { room, action, ok: true };
-        switch (action) {
-          case 'play': await sonos.play(ip); break;
-          case 'pause': await sonos.pause(ip); break;
-          case 'stop': await sonos.stop(ip); break;
-          case 'next': await sonos.next(ip); break;
-          case 'previous': await sonos.previous(ip); break;
-          case 'volume': result.volume = await sonos.setVolume(ip, value); break;
-          case 'mute': await sonos.setMute(ip, !!value); result.muted = !!value; break;
-          case 'play_stream':
-            if (!uri) { res.writeHead(400); res.end('{"error":"uri required"}'); return; }
-            await sonos.playStream(ip, uri);
-            break;
-          default:
-            res.writeHead(400); res.end(JSON.stringify({ error: `unknown action: ${action}` })); return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
+  if (pathname.startsWith('/api/sonos')) {
+    if (await sonosApi.handle(sonos, req, res, url)) return;
   }
 
   res.writeHead(404); res.end('Not found');
@@ -372,4 +347,9 @@ server.on('upgrade', (req, socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Berg Castle Panel → http://localhost:${PORT}`);
   console.log(`  ${ROOMS_DATA.total_rooms} rooms, ${ROOMS_DATA.total_outputs} outputs, ${ROOMS_DATA.zones.length} zones`);
+  // Sonos initialises after the listener is up: GENA subscriptions name this server
+  // as their callback target, so the port must already be accepting connections.
+  sonos.init();
 });
+
+process.on('SIGTERM', () => sonos.events.stop().finally(() => process.exit(0)));
