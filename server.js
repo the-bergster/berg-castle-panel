@@ -20,6 +20,7 @@ const { loadRooms } = require('./rooms');
 const { loadScenes } = require('./scenes');
 const { listSynthetic, findSynthetic } = require('./synthetic-scenes');
 const sonos = require('./sonos');
+const intercom = require('./intercom');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -292,6 +293,86 @@ const server = http.createServer(async (req, res) => {
         await lutron.setMany(cmds);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ zone, level, count: cmds.length }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ---- Intercom ----
+  if (req.method === 'GET' && pathname.startsWith('/recordings/')) {
+    // Serve saved MP3 recordings so Sonos can pull them.
+    const file = pathname.replace(/^\/recordings\//, '');
+    // Prevent path traversal + block manifest.
+    if (file.includes('..') || file.includes('/') || file === '_manifest.json') {
+      res.writeHead(404); res.end(); return;
+    }
+    const filepath = path.join(intercom.RECORDINGS_DIR, file);
+    fs.readFile(filepath, (err, data) => {
+      if (err) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': data.length,
+        'Cache-Control': 'no-store',
+      });
+      res.end(data);
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/intercom/record') {
+    // Accept audio blob (Content-Type = audio/webm etc.), transcode to mp3, return meta.
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      try {
+        const buf = Buffer.concat(chunks);
+        if (buf.length === 0) { res.writeHead(400); res.end('{"error":"empty body"}'); return; }
+        if (buf.length > 20 * 1024 * 1024) { res.writeHead(413); res.end('{"error":"recording too large (max 20MB)"}'); return; }
+        const mime = req.headers['content-type'] || 'audio/webm';
+        const meta = await intercom.saveRecording(buf, mime);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(meta));
+      } catch (e) {
+        console.error('[Intercom] record failed:', e);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/intercom/broadcast') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { recording_id, rooms, volume } = JSON.parse(body);
+        const rec = intercom.getRecording(recording_id);
+        if (!rec) { res.writeHead(404); res.end('{"error":"unknown recording"}'); return; }
+        if (!Array.isArray(rooms) || rooms.length === 0) {
+          res.writeHead(400); res.end('{"error":"rooms[] required"}'); return;
+        }
+        const url = intercom.fullUrlFor(rec);
+        const results = await Promise.all(rooms.map(async (room) => {
+          const coord = sonos.coordinatorFor(room);
+          if (!coord) return { room, ok: false, error: 'unknown room' };
+          try {
+            if (typeof volume === 'number') {
+              await sonos.setVolume(coord.ip, volume).catch(() => {});
+            }
+            await sonos.playStream(coord.ip, url);
+            return { room, ok: true };
+          } catch (e) {
+            return { room, ok: false, error: e.message };
+          }
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          recording_id, url, rooms: results,
+          successful: results.filter((r) => r.ok).length,
+          failed: results.filter((r) => !r.ok).length,
+        }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));

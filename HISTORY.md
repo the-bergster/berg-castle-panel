@@ -2,6 +2,29 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-02 (evening, branch `feature/intercom`) — Intercom tile + walkie-talkie broadcast
+
+**What shipped:**
+- New Hub tile: *Intercom* (red mic icon).
+- `#/intercom` route with a full broadcast UX:
+  - 2-column pill grid of all 19 Sonos zones, tap to select/deselect. `All` / `None` shortcuts.
+  - Volume slider (0-100) that applies to every target zone right before broadcast.
+  - Big round red *Record* button: tap-to-start, tap-to-stop. Pulses while recording, timer counts up in `MM:SS`.
+  - On stop, blob is uploaded to `POST /api/intercom/record`; server transcodes to MP3 with ffmpeg and returns metadata.
+  - `Send to N` primary action + `Discard` secondary. Send calls `POST /api/intercom/broadcast` with `{ recording_id, rooms, volume }`; server sets volume + `SetAVTransportURI` + `Play` on each target Sonos coordinator in parallel.
+- `intercom.js`: recording storage (`/recordings/<uuid>.mp3`, prunes to last 20), LAN-IP auto-detection so Sonos speakers can reach the panel URL, ffmpeg transcode from any browser-recorded format (webm/opus, mp4/aac, ogg) to Sonos-safe MP3.
+- `server.js`: `GET /recordings/:file`, `POST /api/intercom/record` (binary body), `POST /api/intercom/broadcast`.
+- Fixed a pre-existing infinite-render loop on the Hub caused by a `fetchSonos().then(renderHub)` cycle; now only refetches on first visit.
+
+**Verified end-to-end just now:**
+- Generated a 2s sine-wave `.webm` via ffmpeg, POSTed to `/api/intercom/record` → got back a valid MP3 URL.
+- Broadcast to Dining Room via `/api/intercom/broadcast` with `volume: 25` → `snapshot()` immediately showed `Dining Room` at vol 25 with `track_uri = http://192.168.2.82:4321/recordings/<id>.mp3`. Simon literally heard a beep in the Dining Room.
+
+**Not shipped yet, deliberately:**
+- Broadcast history / re-broadcast. First release is single-shot.
+- Group-based presets ("Kids areas", "Main floor"). Requires floor/area tagging in `sonos-rooms.json`.
+- Restore-previous-audio behaviour. Right now the broadcast leaves the target zone at STOPPED after the MP3 finishes; if there was music playing before, it's not resumed. Worth adding once the base UX is validated.
+
 ## 2026-08-02 (later) — Music tab goes real: live Sonos control
 
 **What shipped:**

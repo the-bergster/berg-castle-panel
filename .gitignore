@@ -5,3 +5,4 @@ node_modules
 /tmp/
 .env
 .env.local
+/recordings/
