@@ -23,6 +23,10 @@ Cloudflare Access, installable as a PWA.
 - Grouping: join, leave, set exact membership, party mode, drop all groups
 - Per-room and per-group volume, mute, and proportional group volume
 - Sonos Favorites, Sonos Playlists, built-in SomaFM stations, line-in (the turntable)
+- TV input on the soundbars, so playing music on an Arc is reversible from here.
+  This matters: playing anything on a soundbar replaces its TV audio, and without a
+  way back the panel could break TV sound but not fix it. Master TV was found in
+  exactly that state — pointed at a leftover announcement MP3.
 - Catalog search via Spotify, playing straight to any room
 - Per-model EQ: bass, treble, loudness, and night mode / speech enhancement /
   sub gain / surround level where the hardware actually has them

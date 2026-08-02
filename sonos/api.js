@@ -320,8 +320,12 @@ async function handle(sys, req, res, url) {
     }
 
     if (method === 'POST' && p === '/api/sonos/play') {
-      const { room, item, mode = 'now', presetId, lineInRoom } = await readBody(req);
+      const { room, item, mode = 'now', presetId, lineInRoom, tv } = await readBody(req);
       need(room, 'room');
+      if (tv) {
+        sendJson(res, 200, await sys.player.playTV(room));
+        return true;
+      }
       if (presetId) {
         const preset = presets.byId(presetId);
         if (!preset) throw new Error(`Unknown radio preset: ${presetId}`);

@@ -1383,6 +1383,7 @@ const Music = (() => {
 
   /** Overflow: EQ, sleep timer, crossfade, party mode. */
   async function openMoreSheet(room, np) {
+    if (!S.lineIn.length) await loadLibrary().catch(() => {});
     const caps = S.caps.get(room) || await api('/api/sonos/caps?room=' + encodeURIComponent(room)).catch(() => null);
     if (caps) S.caps.set(room, caps);
     const v = caps ? caps.values : {};
@@ -1416,6 +1417,14 @@ const Music = (() => {
       ${caps?.speechEnhance ? toggleRow('speechEnhance', 'Speech enhancement', !!v.speechEnhance) : ''}
       ${caps?.subGain ? toneRow('subGain', 'Sub gain', v.subGain ?? 0, -15, 15) : ''}
       ${caps?.surroundLevel ? toneRow('surroundLevel', 'Surround level', v.surroundLevel ?? 0, -15, 15) : ''}
+
+      ${np && (np.hasTV || S.lineIn.length) ? `
+        <div class="m-section-head"><div class="m-section-title">Sources</div></div>
+        <div class="m-toolbar">
+          ${np.hasTV ? `<button class="m-chip ${np.sourceKind === 'tv' ? 'is-active' : ''}" data-tv>📺 TV</button>` : ''}
+          ${S.lineIn.filter((l) => l.name && l.name !== 'Audio Component')
+            .map((l) => `<button class="m-chip" data-linein="${esc(l.room)}">${ICONS.linein} ${esc(l.name)}</button>`).join('')}
+        </div>` : ''}
 
       <div class="m-section-head"><div class="m-section-title">Playback</div></div>
       ${toggleRow('crossfade', 'Crossfade', false, 'Blend the end of one track into the next')}
@@ -1479,6 +1488,24 @@ const Music = (() => {
             closeSheet();
             const result = await command(() => post('/api/sonos/sleep', { room, minutes }));
             if (result) toast(minutes ? `Sleeping in ${minutes} min` : 'Sleep timer off');
+          });
+        });
+
+        const tvBtn = $('[data-tv]', sheet);
+        if (tvBtn) tvBtn.addEventListener('click', async () => {
+          haptic(12);
+          closeSheet();
+          const result = await command(() => post('/api/sonos/play', { room, tv: true }));
+          if (result) { toast(`${room} switched to TV`); setTimeout(() => paintNowPlaying(room), 900); }
+        });
+
+        $$('[data-linein]', sheet).forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            haptic(12);
+            closeSheet();
+            const source = btn.dataset.linein;
+            const result = await command(() => post('/api/sonos/play', { room, lineInRoom: source }));
+            if (result) { toast(`Playing ${source} line-in`); setTimeout(() => paintNowPlaying(room), 900); }
           });
         });
 

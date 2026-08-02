@@ -323,13 +323,48 @@ class Player {
     return { queued: 'track', uri, ...result, playedNow: mode === 'now' };
   }
 
-  /** Play another room's line-in through this room's group (turntable, TV, etc). */
+  /** Play another room's line-in through this room's group (turntable, etc). */
   async playLineIn(room, sourceRoom) {
     const coordinator = this._coordinator(room);
     const source = this._player(sourceRoom);
     await dev.transport.setAVTransportURI(coordinator.ip, `x-rincon-stream:${source.uuid}`, '');
     await dev.transport.play(coordinator.ip);
     return { room, source: source.name };
+  }
+
+  /**
+   * Switch a soundbar back to its TV input.
+   *
+   * This is not a nicety. Playing anything on an Arc replaces its TV audio, and
+   * without this the only way back is the official Sonos app or the TV itself —
+   * the panel would be able to break TV sound but not fix it. It has already
+   * happened in this house: Master TV was left pointing at an announcement MP3.
+   *
+   * The URI is the soundbar's own UUID, verified live against the Lounge Arc while
+   * it was on TV: x-sonos-htastream:RINCON_F0F6C171ACDC01400:spdif
+   */
+  async playTV(room) {
+    const player = this._player(room);
+    const record = this.topology.roomByName(room);
+    if (!record || !this.canPlayTV(room)) {
+      throw new SonosError(`${room} has no TV input`, { action: 'playTV' });
+    }
+    // A soundbar owns its own TV input, so it must be coordinating itself first.
+    const group = this.topology.groupById(record.groupId);
+    if (group && group.size > 1 && group.coordinatorUuid !== record.uuid) {
+      await dev.transport.becomeCoordinatorOfStandaloneGroup(player.ip);
+      await this.topology.refresh({ settle: true });
+    }
+    await dev.transport.setAVTransportURI(player.ip, `x-sonos-htastream:${player.uuid}:spdif`, '');
+    await dev.transport.play(player.ip).catch(() => {});
+    return { room, source: 'TV' };
+  }
+
+  /** Whether a room has a TV input worth offering. */
+  canPlayTV(room) {
+    const record = this.topology.roomByName(room);
+    if (!record) return false;
+    return record.hdmiCec === true || /Arc|Beam|Ray|Playbar|Playbase/i.test(record.model || '');
   }
 
   // ---- Queue ----
@@ -511,6 +546,7 @@ class Player {
 
       sourceKind: source.kind,
       service: track ? track.service || source.service : source.service,
+      hasTV: this.canPlayTV(roomRecord.name),
 
       track: track
         ? {
