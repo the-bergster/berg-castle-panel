@@ -24,7 +24,6 @@
 const { EventEmitter } = require('events');
 const http = require('http');
 const X = require('./xml');
-const dev = require('./device');
 
 const SUBSCRIBE_TIMEOUT_SECONDS = 600;
 const RENEW_MARGIN_MS = 60000; // renew a minute before expiry

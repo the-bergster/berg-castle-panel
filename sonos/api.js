@@ -9,7 +9,6 @@
 'use strict';
 
 const presets = require('./presets');
-const didl = require('./didl');
 const { SonosError } = require('./soap');
 
 const MAX_BODY_BYTES = 256 * 1024;

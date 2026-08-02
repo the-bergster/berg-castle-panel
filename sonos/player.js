@@ -14,7 +14,6 @@
 
 const dev = require('./device');
 const didl = require('./didl');
-const X = require('./xml');
 const { SonosError } = require('./soap');
 
 /** Play modes, decomposed into the two independent toggles a UI actually shows. */
