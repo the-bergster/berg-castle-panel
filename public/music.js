@@ -87,6 +87,41 @@ const Music = (() => {
     toastTimer = setTimeout(() => el.remove(), isError ? 4200 : 2200);
   }
 
+  /**
+   * Replace a container's contents only when they would actually differ.
+   *
+   * The polling loop repaints every few seconds. Blindly assigning innerHTML each
+   * time costs nothing visually *if* nothing changed — except it does: the container
+   * empties for an instant, the document collapses to a fraction of its height, the
+   * browser clamps scrollY to the new maximum, and the user is thrown back to the top
+   * mid-scroll. Repeat every 3 seconds and the page is unusable.
+   *
+   * So: compare a signature of the meaningful state first and skip identical repaints
+   * entirely, and when a repaint really is needed, restore the scroll position across
+   * it. Volatile values that tick every second (playback position) are deliberately
+   * excluded from signatures — those are updated in place by the ticker instead.
+   */
+  const RENDER_SIGS = new Map();
+
+  function renderIfChanged(holder, key, signature, buildHtml) {
+    if (!holder) return false;
+    if (RENDER_SIGS.get(key) === signature) return false;
+    RENDER_SIGS.set(key, signature);
+    const y = window.scrollY;
+    holder.innerHTML = buildHtml();
+    // Only restore if the page is still tall enough to hold that offset, so we never
+    // fight a genuinely shorter page.
+    if (y > 0 && document.documentElement.scrollHeight - window.innerHeight >= y) {
+      window.scrollTo(0, y);
+    }
+    return true;
+  }
+
+  function invalidateRender(key) {
+    if (key) RENDER_SIGS.delete(key);
+    else RENDER_SIGS.clear();
+  }
+
   const ICONS = {
     play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
     pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>',
@@ -473,6 +508,9 @@ const Music = (() => {
         <div id="m-zones-content">${S.loaded ? '' : zoneSkeleton()}</div>
       </div>`;
     wireTopbar(app);
+    // The container was just recreated, so any cached render signature is stale —
+    // without this the conditional repaint would decide the empty list is current.
+    invalidateRender('zones');
     if (S.loaded) paintZones();
     (S.loaded ? Promise.resolve() : loadState()).then(() => paintZones());
     startPolling();
@@ -491,7 +529,11 @@ const Music = (() => {
     const cards = groupCards();
     const playing = cards.filter((c) => isPlaying(c.state));
 
-    holder.innerHTML = `
+    const signature = JSON.stringify(cards.map((c) => {
+      const d = displayTrack(c);
+      return [c.room, c.groupName, c.groupSize, c.state, d.title, d.subtitle, d.art, c.offline, c.model, c.service];
+    }));
+    const changed = renderIfChanged(holder, 'zones', signature, () => `
       <div class="m-summary">
         <div class="m-summary-num">${playing.length}</div>
         <div class="m-summary-label">
@@ -508,9 +550,9 @@ const Music = (() => {
         ${playing.length ? `<button class="m-chip is-danger" data-pause-all>${ICONS.pause} Pause all</button>` : ''}
       </div>
 
-      <div class="m-zones">${cards.map(zoneCard).join('')}</div>`;
+      <div class="m-zones">${cards.map(zoneCard).join('')}</div>`);
 
-    wireZones(holder);
+    if (changed) wireZones(holder);
   }
 
   function zoneCard(r) {
@@ -602,6 +644,7 @@ const Music = (() => {
       ${topbar(room, 'Now Playing', { back: '/music' })}
       <div class="m-np m-shell fade-in" id="m-np"><div class="m-empty">Loading…</div></div>`;
     wireTopbar(app);
+    invalidateRender('np');
     await paintNowPlaying(room);
     startTick();
     startPolling();
@@ -639,8 +682,19 @@ const Music = (() => {
     const group = S.topology.groups.find((g) => g.id === np.groupId);
     const members = group ? group.memberUuids.map((u) => S.topology.rooms.find((r) => r.uuid === u)).filter(Boolean) : [];
 
-    holder.className = `m-np m-shell fade-in ${playing ? '' : 'is-paused'}`;
-    holder.innerHTML = `
+    holder.className = `m-np m-shell ${playing ? '' : 'is-paused'}`;
+
+    // Same conditional-repaint rule as the zone list. Without it the poll loop
+    // rebuilds this view every few seconds, which re-creates the <img> and makes the
+    // album art visibly blink. Playback position is deliberately absent from the
+    // signature — the ticker moves the scrub bar in place.
+    const signature = JSON.stringify([
+      np.room, np.state, d.title, d.subtitle, d.art, track.album, track.station,
+      np.shuffle, np.repeat, np.volume, np.muted, np.groupName, np.groupSize,
+      np.queueLength, np.canNext, np.canPrevious, np.canSeek, np.sourceKind, np.hasTV,
+      members.map((m) => { const st = roomState(m.name); return [m.name, st && st.volume, st && st.muted]; }),
+    ]);
+    const changed = renderIfChanged(holder, 'np', signature, () => `
       <div class="m-np-art-wrap">${artHtml(d.art, 'm-np-art', d.title || room)}</div>
 
       <div class="m-np-meta">
@@ -692,9 +746,9 @@ const Music = (() => {
             </div>`;
           }).join('')}
         </div>` : ''}
-    `;
+    `);
 
-    wireNowPlaying(holder, room, np);
+    if (changed) wireNowPlaying(holder, room, np);
     if (!caps) {
       api('/api/sonos/caps?room=' + encodeURIComponent(room))
         .then((c) => { S.caps.set(room, c); })
@@ -1611,6 +1665,10 @@ const Music = (() => {
 
   function repaintCurrent() {
     const hash = location.hash.slice(1);
+    if (hash === '/' || hash === '') {
+      if (typeof window.paintHubMusicTile === 'function') window.paintHubMusicTile();
+      return;
+    }
     if (hash === '/music') paintZones();
     else if (hash.startsWith('/music/z/')) {
       const room = decodeURIComponent(hash.slice('/music/z/'.length));

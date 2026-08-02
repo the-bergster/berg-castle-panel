@@ -257,10 +257,44 @@ function renderHub() {
 
   connectWS();
 
-  // Load Sonos state so the Music tile shows accurate counts on next re-render.
-  Music.loadState()
-    .then(() => { if (currentRoute === '/' || currentRoute === '') renderHub(); })
-    .catch(() => {});
+  // Fill in the Music tile once Sonos state arrives.
+  //
+  // This repaints only the tile. It used to call renderHub() from the callback,
+  // which called loadState() again, which called renderHub() again — an unbounded
+  // loop that swapped the whole document on every pass (visible as a flashing page,
+  // and re-triggering the fade-in animation each time) while firing a full 19-room
+  // snapshot at the speakers as fast as they could answer.
+  if (Music.state.loaded) paintHubMusicTile();
+  else Music.loadState().then(paintHubMusicTile).catch(() => {});
+}
+
+/** Update the Hub's Music tile in place. Safe to call at any time. */
+function paintHubMusicTile() {
+  if (currentRoute !== '/' && currentRoute !== '') return;
+  const tile = app.querySelector('.hub-music');
+  if (!tile) return;
+
+  const { playing, total } = musicPlayingCount();
+  const sub = tile.querySelector('.hub-tile-sub');
+  if (sub) {
+    sub.textContent = total === 0
+      ? 'Sonos · unreachable'
+      : playing === 0
+        ? `${total} zones · silent`
+        : `${playing} playing · ${total} ${total === 1 ? 'zone' : 'zones'}`;
+  }
+
+  let badge = tile.querySelector('.hub-tile-badge');
+  if (playing > 0) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'hub-tile-badge hub-badge-music';
+      tile.appendChild(badge);
+    }
+    badge.textContent = playing;
+  } else if (badge) {
+    badge.remove();
+  }
 }
 
 // ---------- Music ----------
@@ -671,5 +705,6 @@ async function boot() {
 
 window.setConn = setConn;
 window.wsIsOpen = wsIsOpen;
+window.paintHubMusicTile = paintHubMusicTile;
 
 boot();
