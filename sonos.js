@@ -216,24 +216,40 @@ async function playStream(ip, uri) {
 }
 
 // Capture the full pre-broadcast state of a room so we can restore it later.
-// Grabs URI, raw metadata, transport state, volume, and playback position.
+// Grabs URI, raw metadata, transport state, volume, playback position,
+// track number in queue, AND the AV-transport URI (queue reference) plus
+// its metadata — which is DIFFERENT from track_uri when playing from a queue.
 async function captureState(ip) {
-  const [ti, piXml, volume] = await Promise.all([
+  const [ti, piXml, mediaXml, volume] = await Promise.all([
     getTransportInfo(ip).catch(() => null),
-    // GetPositionInfo directly to grab RAW TrackMetaData for accurate restore.
     avTransport(ip, 'GetPositionInfo', '<InstanceID>0</InstanceID>').catch(() => ''),
+    // GetMediaInfo gives us the container URI (e.g. x-rincon-queue:...#0)
+    // even when GetPositionInfo returns the *current track* URI.
+    avTransport(ip, 'GetMediaInfo', '<InstanceID>0</InstanceID>').catch(() => ''),
     getVolume(ip).catch(() => null),
   ]);
   const trackUri = pickText(piXml || '', 'TrackURI') || '';
   const trackMeta = pickText(piXml || '', 'TrackMetaData') || '';
   const relTime = pickText(piXml || '', 'RelTime') || '0:00:00';
+  const trackNum = parseInt(pickText(piXml || '', 'Track') || '0', 10);
+  // The AVTransport-level URI: this is the container (x-rincon-queue:...) for
+  // queue playback, or the same as trackUri for radio/single-stream playback.
+  const currentUri = pickText(mediaXml || '', 'CurrentURI') || trackUri;
+  const currentUriMeta = pickText(mediaXml || '', 'CurrentURIMetaData') || '';
+  const isQueue = /^x-rincon-queue:/i.test(currentUri);
   return {
     ip,
     state: ti?.state || 'STOPPED',
     volume: volume ?? 0,
+    // The container URI — what we hand back to SetAVTransportURI.
+    current_uri: currentUri,
+    current_uri_metadata: currentUriMeta,
+    // The individual current track URI (informational; not sent back).
     track_uri: trackUri,
     track_metadata: trackMeta,
     position: relTime,
+    track_number: trackNum,
+    is_queue: isQueue,
     captured_at: Date.now(),
   };
 }
@@ -242,30 +258,63 @@ async function captureState(ip) {
 // don't abort the whole restore.
 async function restoreState(state) {
   const { ip } = state;
+  // Restore uses the AVTransport-level URI (container), not the track URI,
+  // because for queue-based playback (Sonos app) the container is
+  // x-rincon-queue:... and the individual track_uri only points to one item.
+  const restoreUri = state.current_uri || state.track_uri;
+  const restoreMeta = state.current_uri_metadata || state.track_metadata || '';
+
+  const notes = [];
+
   // If there was no URI loaded before, just stop + set volume and leave it.
-  if (!state.track_uri) {
+  if (!restoreUri) {
     await stop(ip).catch(() => {});
     if (typeof state.volume === 'number') await setVolume(ip, state.volume).catch(() => {});
     return { ip, restored: true, note: 'no prior URI, left stopped' };
   }
+
+  // 1. Put the container URI back.
   try {
-    await setAvTransportUri(ip, state.track_uri, state.track_metadata);
+    await setAvTransportUri(ip, restoreUri, restoreMeta);
   } catch (e) {
     return { ip, restored: false, error: `SetAVTransportURI failed: ${e.message}` };
   }
-  // Seek back to where we were. Some URIs (radio streams) reject seek — that's ok.
-  if (state.position && state.position !== '0:00:00') {
-    await seek(ip, state.position).catch(() => {});
+
+  // 2. For queue playback, jump to the correct track first.
+  if (state.is_queue && state.track_number > 0) {
+    try {
+      await avTransport(
+        ip,
+        'Seek',
+        `<InstanceID>0</InstanceID><Unit>TRACK_NR</Unit><Target>${state.track_number}</Target>`
+      );
+      notes.push(`seeked to track ${state.track_number}`);
+    } catch (e) {
+      notes.push(`track seek failed: ${e.message}`);
+    }
   }
-  // Restore volume before hitting play so the resume doesn't blast the room.
+
+  // 3. Seek to the playback position within the current track.
+  if (state.position && state.position !== '0:00:00' && state.position !== 'NOT_IMPLEMENTED') {
+    await seek(ip, state.position).catch((e) => notes.push(`REL_TIME seek failed: ${e.message}`));
+  }
+
+  // 4. Restore volume BEFORE play so we don't blast the room.
   if (typeof state.volume === 'number') {
     await setVolume(ip, state.volume).catch(() => {});
   }
-  // Only resume playback if it was playing before we hijacked it.
+
+  // 5. Resume playback if it was playing before.
   if (state.state === 'PLAYING' || state.state === 'TRANSITIONING') {
-    await play(ip).catch(() => {});
+    try {
+      await play(ip);
+      notes.push('play issued');
+    } catch (e) {
+      notes.push(`play failed: ${e.message}`);
+    }
   }
-  return { ip, restored: true };
+
+  return { ip, restored: true, is_queue: state.is_queue, notes };
 }
 
 // Fetch a snapshot of everything: volume + state + track — for all rooms in parallel.

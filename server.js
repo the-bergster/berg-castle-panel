@@ -362,8 +362,17 @@ const server = http.createServer(async (req, res) => {
         if (shouldRestore) {
           preStates = await Promise.all(roomCoords.map(async ({ room, coord }) => {
             if (!coord) return null;
-            try { return { room, state: await sonos.captureState(coord.ip) }; }
-            catch (e) { console.warn(`[Intercom] captureState failed for ${room}: ${e.message}`); return null; }
+            try {
+              const s = await sonos.captureState(coord.ip);
+              console.log(`[Intercom] captured ${room}:`, {
+                state: s.state, vol: s.volume, uri: s.current_uri?.slice(0, 60),
+                pos: s.position, track: s.track_number, is_queue: s.is_queue,
+              });
+              return { room, state: s };
+            } catch (e) {
+              console.warn(`[Intercom] captureState failed for ${room}: ${e.message}`);
+              return null;
+            }
           }));
         }
 
@@ -394,7 +403,7 @@ const server = http.createServer(async (req, res) => {
               if (!entry) return null;
               try {
                 const out = await sonos.restoreState(entry.state);
-                console.log(`[Intercom] restored ${entry.room}:`, out);
+                console.log(`[Intercom] restored ${entry.room} (was ${entry.state.state}, queue=${!!entry.state.is_queue}):`, out.notes || out);
                 return { room: entry.room, ...out };
               } catch (e) {
                 console.error(`[Intercom] restore failed for ${entry.room}:`, e.message);
