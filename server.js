@@ -22,6 +22,7 @@ const { listSynthetic, findSynthetic } = require('./synthetic-scenes');
 const { SonosSystem } = require('./sonos');
 const sonosApi = require('./sonos/api');
 const intercom = require('./intercom');
+const climate = require('./climate');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -186,6 +187,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && pathname === '/music.css') {
     serveStatic(res, 'music.css'); return;
+  }
+  if (req.method === 'GET' && pathname === '/climate.js') {
+    serveStatic(res, 'climate.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/climate.css') {
+    serveStatic(res, 'climate.css'); return;
   }
   if (req.method === 'GET' && pathname === '/favicon.svg') {
     serveStatic(res, 'favicon.svg'); return;
@@ -462,6 +469,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (pathname.startsWith('/api/sonos')) {
     if (await sonosApi.handle(sonos, req, res, url)) return;
+  }
+
+  if (pathname.startsWith('/api/climate')) {
+    if (await climate.handle(req, res, url)) return;
   }
 
   res.writeHead(404); res.end('Not found');

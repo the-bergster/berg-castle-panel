@@ -174,6 +174,8 @@ async function allOff() {
 function route() {
   const hash = location.hash.slice(1) || '/';
   currentRoute = hash;
+  // Any route change: tear down modules we might be leaving.
+  if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();
@@ -186,6 +188,10 @@ function route() {
   } else if (hash === '/intercom') {
     Music.teardown();
     renderIntercom();
+  } else if (hash.startsWith('/climate')) {
+    Music.teardown();
+    Climate.render(app, hash);
+    return;
   } else if (hash.startsWith('/room/')) {
     Music.teardown();
     const id = parseInt(hash.split('/')[2], 10);
@@ -264,6 +270,19 @@ function renderHub() {
           <div class="hub-tile-sub">Broadcast to any zone</div>
         </div>
       </button>
+
+      <button class="hub-tile hub-climate" data-nav="/climate">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 1 1 4 0z"/>
+            <line x1="12" y1="8" x2="12" y2="14"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Climate</div>
+          <div class="hub-tile-sub" id="hub-climate-sub">Loading zones…</div>
+        </div>
+      </button>
     </div>
   `;
 
@@ -283,6 +302,46 @@ function renderHub() {
   // snapshot at the speakers as fast as they could answer.
   if (Music.state.loaded) paintHubMusicTile();
   else Music.loadState().then(paintHubMusicTile).catch(() => {});
+
+  // Climate summary — same pattern: paint in-place when it arrives, no rerender.
+  if (window.Climate) {
+    if (Climate.state.loaded) paintHubClimateTile();
+    else Climate.loadSummary().then(paintHubClimateTile).catch(() => {
+      const sub = document.getElementById('hub-climate-sub');
+      if (sub) sub.textContent = 'Ecobee bridge offline';
+    });
+  }
+}
+
+/** Update the Hub's Climate tile in place. Safe to call at any time. */
+function paintHubClimateTile() {
+  if (currentRoute !== '/' && currentRoute !== '') return;
+  const tile = app.querySelector('.hub-climate');
+  if (!tile) return;
+  const sub = tile.querySelector('.hub-tile-sub');
+  const s = Climate.summary();
+  if (s.count === 0) {
+    if (sub) sub.textContent = 'Ecobee bridge offline';
+    return;
+  }
+  const parts = [];
+  if (s.avgTemp != null) parts.push(`${Math.round(s.avgTemp)}° avg`);
+  parts.push(`${s.count} zones`);
+  if (s.running > 0) parts.push(`${s.running} running`);
+  if (sub) sub.textContent = parts.join(' · ');
+
+  // Badge shows number of running zones (like Music shows playing count)
+  let badge = tile.querySelector('.hub-tile-badge');
+  if (s.running > 0) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'hub-tile-badge hub-badge-climate';
+      tile.appendChild(badge);
+    }
+    badge.textContent = s.running;
+  } else if (badge) {
+    badge.remove();
+  }
 }
 
 /** Update the Hub's Music tile in place. Safe to call at any time. */
