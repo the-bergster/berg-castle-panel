@@ -1,17 +1,15 @@
-// Berg Castle · climate.js
+// Berg Castle · climate.js v2 (ecobee polish, 2026-08-03)
 //
-// The Climate app: 9 ecobee zones with live temp, mode, holds, sensors,
-// setpoint nudge, and comfort-profile broadcast.
+// Three-screen navigation model, mirroring the official ecobee app:
+//   1. Zone list         → hash: /climate           (cards, one per thermostat)
+//   2. Zone detail       → hash: /climate/<index>   (big hero temp, hold pill, action row)
+//   3. Setpoint picker   → hash: /climate/<index>/set/<mode>
+//                          (wheel + squircle-blue tile + floating ± controls)
 //
-// Vanilla, single global `Climate` — matches Music module pattern.
+// Settings sheet slides up from the detail action-row's third icon; it houses
+// mode/fan/comfort/sensors/actions that were previously crammed into a modal.
 //
-// Design notes:
-//   • Optimistic UI on every mutation. Debounced setpoint bumps so a
-//     triple-tap on ± fires one API call, not three.
-//   • Poll only when the Climate view is active (Home hub uses a light
-//     summary fetch that doesn't wake anything up on the ecobee side).
-//   • Colour palette: heat = --heat (warm coral), cool = --cool (soft blue),
-//     both stay muted so the amber Lutron/Sonos accents remain hero.
+// Vanilla, single global `Climate`. Optimistic UI on every write.
 
 const Climate = (() => {
   'use strict';
@@ -21,26 +19,30 @@ const Climate = (() => {
     thermostats: [],
     updatedAt: 0,
     loaded: false,
-    expandedIndex: null,
     pending: {},            // index → { heat?, cool?, mode? }
-    globalBusy: null,       // 'home' | 'sleep' | 'away' | 'resume-all'
+    globalBusy: null,
     toasts: [],
     lastFetchAt: 0,
+    view: 'list',           // 'list' | 'detail' | 'picker' | 'settings'
+    detailIndex: null,
+    pickerIndex: null,
+    pickerMode: null,       // 'heat' | 'cool' — which value the wheel edits
+    pickerValue: null,      // in-flight value while picker open
+    settingsOpen: false,
   };
 
   let pollTimer = null;
-  let debounceTimers = {};
   let toastCounter = 0;
-  let hostApp = null;
   let escHandler = null;
+  let hostApp = null;
 
   const POLL_MS = 30_000;
-  const NUDGE_DEBOUNCE_MS = 900;
-  const SUMMARY_TTL_MS = 60_000;  // Hub tile summary — refetch at most once/min
+  const SUMMARY_TTL_MS = 60_000;
+  const NUDGE_DEBOUNCE_MS = 700;
+  let commitTimer = null;
 
   // ─── Utilities ──────────────────────────────────────────────────────────
   const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -53,29 +55,19 @@ const Climate = (() => {
     return decimals > 0 ? Number(t).toFixed(decimals) : String(Math.round(t));
   }
 
-  function modeIcon(mode) {
-    // Simple 1-char glyphs; matches the panel's restrained aesthetic
-    switch (mode) {
-      case 'cool': return '❄';
-      case 'heat': return '☼';
-      case 'auto': return '⇅';
-      case 'off':  return '○';
-      case 'auxHeatOnly': return '⚡';
-      default: return '·';
-    }
-  }
-  function modeLabel(mode) {
-    return mode === 'auxHeatOnly' ? 'aux' : (mode || '?');
-  }
-
-  function climateGlyph(ref) {
-    if (!ref) return '·';
-    const r = String(ref).toLowerCase();
-    if (r.includes('home')) return '⌂';
-    if (r.includes('away')) return '⤴';
-    if (r.includes('sleep')) return '☾';
-    if (r.includes('wake')) return '☀';
-    return '·';
+  function fmtEndTime(hold) {
+    // ecobee holds carry endDate + endTime; render "until 9:00 pm" style.
+    if (!hold || !hold.endTime) return null;
+    // endTime is "HH:MM:SS"; endDate is YYYY-MM-DD in the thermostat's TZ.
+    // We deliberately don't do TZ math client-side; ecobee returns thermostat-local.
+    const [hStr, mStr] = hold.endTime.split(':');
+    const h24 = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h24) || isNaN(m)) return null;
+    const ampm = h24 >= 12 ? 'pm' : 'am';
+    const h12 = ((h24 + 11) % 12) + 1;
+    const mm = m === 0 ? '' : ':' + String(m).padStart(2, '0');
+    return `until ${h12}${mm} ${ampm}`;
   }
 
   function isScheduleHold(hold) {
@@ -93,6 +85,26 @@ const Climate = (() => {
         hvacMode: p.mode ?? t.hvacMode,
       };
     });
+  }
+
+  function findThermostat(index) {
+    return effectiveThermostats().find((t) => t.index === index);
+  }
+
+  // Current setpoint we care about for a given zone's active mode
+  function activeSetpoint(t) {
+    if (t.hvacMode === 'heat') return t.desiredHeat;
+    if (t.hvacMode === 'cool') return t.desiredCool;
+    if (t.hvacMode === 'auto') return t.desiredCool; // default picker to cool side
+    return null;
+  }
+
+  // Accent tone for hero temp / picker
+  function accentFor(t, override) {
+    const mode = override || t.hvacMode;
+    if (mode === 'heat') return 'heat';
+    if (mode === 'cool') return 'cool';
+    return 'cool'; // default (auto/off show blue accents on hold pill)
   }
 
   // ─── Networking ─────────────────────────────────────────────────────────
@@ -131,7 +143,7 @@ const Climate = (() => {
     const id = ++toastCounter;
     S.toasts.push({ id, msg, kind });
     paintToasts();
-    const ttl = kind === 'err' ? 6000 : 2500;
+    const ttl = kind === 'err' ? 5000 : 2200;
     setTimeout(() => {
       S.toasts = S.toasts.filter((t) => t.id !== id);
       paintToasts();
@@ -153,7 +165,48 @@ const Climate = (() => {
     if (S.toasts.length === 0) el.remove();
   }
 
-  // ─── Public: hub summary (called by app.js) ─────────────────────────────
+  // ─── Icons (all inline SVG for consistent stroke) ───────────────────────
+  const ICONS = {
+    back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+    gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    droplet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
+    snowflake: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07L19.07 4.93M8 3l4 3 4-3M8 21l4-3 4 3M3 8l3 4-3 4M21 8l-3 4 3 4"/></svg>`,
+    flame: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+    moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+    sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
+    home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>`,
+    away: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M17 11l4 4-4 4M13 15h8"/></svg>`,
+    thermostat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 1 1 4 0z"/></svg>`,
+    sliders: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.5" fill="currentColor" stroke="none"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.5" fill="currentColor" stroke="none"/></svg>`,
+    fan: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 0 1 8 0c0 5-8 3-8 3s-2-8 3-8"/><path d="M12 12a4 4 0 0 1 0 8c-5 0-3-8-3-8s8-2 8 3"/><path d="M12 12a4 4 0 0 1-8 0c0-5 8-3 8-3s2 8-3 8"/><circle cx="12" cy="12" r="1.5"/></svg>`,
+    refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+    close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    power: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`,
+    auto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21l5-16 5 16M9 15h6"/></svg>`,
+    more: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  };
+
+  function modeIcon(mode) {
+    if (mode === 'cool') return ICONS.snowflake;
+    if (mode === 'heat') return ICONS.flame;
+    if (mode === 'auto') return ICONS.auto;
+    if (mode === 'off') return ICONS.power;
+    return ICONS.power;
+  }
+  function modeLabel(mode) {
+    if (mode === 'auxHeatOnly') return 'aux heat';
+    return mode || '?';
+  }
+  function climateIcon(ref) {
+    if (!ref) return ICONS.home;
+    const r = String(ref).toLowerCase();
+    if (r.includes('sleep')) return ICONS.moon;
+    if (r.includes('away')) return ICONS.away;
+    if (r.includes('wake')) return ICONS.sun;
+    return ICONS.home;
+  }
+
+  // ─── Public: hub summary (called by app.js on landing page) ────────────
   async function loadSummary() {
     if (Date.now() - S.lastFetchAt < SUMMARY_TTL_MS && S.loaded) return summary();
     try {
@@ -163,7 +216,6 @@ const Climate = (() => {
     }
     return summary();
   }
-
   function summary() {
     if (!S.loaded || S.thermostats.length === 0) {
       return { count: 0, avgTemp: null, running: 0, outdoor: null };
@@ -180,74 +232,50 @@ const Climate = (() => {
     };
   }
 
-  // ─── Public: full Climate view ──────────────────────────────────────────
+  // ─── Router integration ─────────────────────────────────────────────────
   async function render(app, hash) {
     hostApp = app;
 
-    app.innerHTML = `
-      <div class="topbar climate-topbar">
-        <div>
-          <div class="topbar-title">Climate</div>
-          <span class="topbar-sub" id="climate-topbar-sub">Loading…</span>
-        </div>
-        <button class="climate-back" data-nav="/" aria-label="Back to hub">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-        </button>
-      </div>
+    // Parse route
+    const parts = hash.replace(/^\/climate\/?/, '').split('/').filter(Boolean);
+    // parts: []  → list
+    //        [idx]  → detail
+    //        [idx, 'set', mode]  → picker
 
-      <div class="climate-page fade-in">
-        <div class="climate-bar" id="climate-bar">
-          <div class="climate-bar-group">
-            <button class="climate-bar-btn" data-comfort="home">
-              <span class="climate-bar-glyph">⌂</span> Home
-            </button>
-            <button class="climate-bar-btn" data-comfort="sleep">
-              <span class="climate-bar-glyph">☾</span> Sleep
-            </button>
-            <button class="climate-bar-btn" data-comfort="away">
-              <span class="climate-bar-glyph">⤴</span> Away
-            </button>
-          </div>
-          <div class="climate-bar-group climate-bar-group--right">
-            <button class="climate-bar-btn climate-bar-btn--secondary" data-resume-all>
-              <span class="climate-bar-glyph">↺</span> Resume Schedule
-            </button>
-          </div>
-        </div>
-
-        <div class="climate-grid" id="climate-grid">
-          <div class="climate-loading">Loading zones…</div>
-        </div>
-      </div>
-    `;
-
-    // Wire nav
-    app.querySelectorAll('[data-nav]').forEach((el) => {
-      el.addEventListener('click', () => { location.hash = el.dataset.nav; });
-    });
-    app.querySelectorAll('[data-comfort]').forEach((btn) => {
-      btn.addEventListener('click', () => applyComfortAll(btn.dataset.comfort));
-    });
-    app.querySelector('[data-resume-all]').addEventListener('click', resumeAll);
-
-    // ESC closes any open detail
-    escHandler = (e) => {
-      if (e.key === 'Escape' && S.expandedIndex != null) {
-        S.expandedIndex = null;
-        paintGrid();
-      }
-    };
-    window.addEventListener('keydown', escHandler);
-
-    try {
-      await fetchState(true);
-    } catch (e) {
-      $('#climate-grid').innerHTML = `<div class="climate-error">⚠︎ ${esc(e.message)}<br><button class="climate-retry" onclick="Climate._retry()">Retry</button></div>`;
-      return;
+    if (parts.length === 0) {
+      S.view = 'list';
+      S.detailIndex = null;
+      S.pickerIndex = null;
+      await renderList();
+    } else if (parts.length === 1) {
+      S.view = 'detail';
+      S.detailIndex = parseInt(parts[0], 10);
+      S.pickerIndex = null;
+      await renderList();  // paint list as background
+      renderDetail();
+    } else if (parts.length === 3 && parts[1] === 'set') {
+      S.view = 'picker';
+      S.detailIndex = parseInt(parts[0], 10);
+      S.pickerIndex = S.detailIndex;
+      S.pickerMode = parts[2];
+      const t = findThermostat(S.pickerIndex);
+      S.pickerValue = t ? (S.pickerMode === 'heat' ? t.desiredHeat : t.desiredCool) : null;
+      await renderList();
+      renderDetail();
+      renderPicker();
     }
-    paintAll();
+
+    // ESC key handler
+    if (!escHandler) {
+      escHandler = (e) => {
+        if (e.key !== 'Escape') return;
+        if (S.settingsOpen) { closeSettings(); return; }
+        if (S.view === 'picker') { closePicker(); return; }
+        if (S.view === 'detail') { closeDetail(); return; }
+      };
+      window.addEventListener('keydown', escHandler);
+    }
+
     startPolling();
   }
 
@@ -257,10 +285,14 @@ const Climate = (() => {
       window.removeEventListener('keydown', escHandler);
       escHandler = null;
     }
-    // Detail modal cleanup
-    const backdrop = document.getElementById('climate-detail-backdrop');
-    if (backdrop) backdrop.remove();
-    S.expandedIndex = null;
+    closeAllOverlays();
+  }
+
+  function closeAllOverlays() {
+    document.getElementById('climate-detail-backdrop')?.remove();
+    document.getElementById('setpoint-picker-backdrop')?.remove();
+    document.getElementById('settings-sheet-backdrop')?.remove();
+    S.settingsOpen = false;
   }
 
   function startPolling() {
@@ -269,7 +301,9 @@ const Climate = (() => {
       if (document.hidden) return;
       try {
         await fetchState();
-        paintAll();
+        // Only repaint the surfaces that exist
+        if (document.getElementById('climate-grid')) paintList();
+        if (document.getElementById('climate-detail-backdrop')) paintDetail();
       } catch (e) {
         console.warn('[climate] poll error:', e.message);
       }
@@ -279,21 +313,97 @@ const Climate = (() => {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  // ─── Painting ───────────────────────────────────────────────────────────
-  function paintAll() {
+  // ─── VIEW 1: Zone list ─────────────────────────────────────────────────
+  async function renderList() {
+    hostApp.innerHTML = `
+      <div class="topbar climate-topbar">
+        <button class="climate-back" data-nav="/" aria-label="Back to hub">${ICONS.back}</button>
+        <div style="text-align:center;">
+          <div class="climate-topbar-title">Climate</div>
+          <div class="climate-topbar-sub" id="climate-topbar-sub">Loading…</div>
+        </div>
+        <div class="climate-topbar-right">
+          <button class="climate-icon-btn" id="climate-refresh-btn" aria-label="Refresh">${ICONS.refresh}</button>
+        </div>
+      </div>
+
+      <div class="climate-page fade-in">
+        <div class="climate-bar" id="climate-bar">
+          <button class="climate-bar-btn" data-comfort="home"><span class="climate-bar-glyph">${ICONS.home}</span> Home</button>
+          <button class="climate-bar-btn" data-comfort="sleep"><span class="climate-bar-glyph">${ICONS.moon}</span> Sleep</button>
+          <button class="climate-bar-btn" data-comfort="away"><span class="climate-bar-glyph">${ICONS.away}</span> Away</button>
+        </div>
+        <div class="climate-bar-secondary-row">
+          <button class="climate-bar-btn climate-bar-btn--secondary" data-resume-all>Resume Schedule</button>
+        </div>
+        <div class="climate-grid" id="climate-grid">
+          <div class="climate-loading">Loading zones…</div>
+        </div>
+      </div>
+    `;
+
+    hostApp.querySelectorAll('[data-nav]').forEach((el) => {
+      el.addEventListener('click', () => { location.hash = el.dataset.nav; });
+    });
+    hostApp.querySelector('#climate-refresh-btn').addEventListener('click', async () => {
+      const btn = hostApp.querySelector('#climate-refresh-btn');
+      btn.style.transform = 'rotate(360deg)';
+      btn.style.transition = 'transform 500ms ease';
+      try { await fetchState(true); paintList(); } catch (e) { pushToast(e.message, 'err'); }
+      setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 500);
+    });
+    hostApp.querySelectorAll('[data-comfort]').forEach((btn) => {
+      btn.addEventListener('click', () => applyComfortAll(btn.dataset.comfort));
+    });
+    hostApp.querySelector('[data-resume-all]').addEventListener('click', resumeAll);
+
+    try {
+      if (!S.loaded) await fetchState(true);
+      paintList();
+    } catch (e) {
+      $('#climate-grid').innerHTML = `
+        <div class="climate-error">
+          ⚠︎ ${esc(e.message)}
+          <br><button class="climate-retry" onclick="Climate._retry()">Retry</button>
+        </div>`;
+    }
+  }
+
+  function paintList() {
+    const grid = document.getElementById('climate-grid');
+    if (!grid) return;
+    const ts = effectiveThermostats();
+    grid.innerHTML = ts.map(renderZoneCard).join('');
+
+    grid.querySelectorAll('.zone-card').forEach((el) => {
+      const idx = parseInt(el.dataset.index, 10);
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.zone-hold-pill-close')) return;
+        location.hash = `/climate/${idx}`;
+      });
+      const clr = el.querySelector('.zone-hold-pill-close');
+      if (clr) {
+        clr.addEventListener('click', (e) => {
+          e.stopPropagation();
+          resumeZone(idx);
+        });
+      }
+    });
+
     paintHeader();
     paintBar();
-    paintGrid();
   }
 
   function paintHeader() {
     const sub = document.getElementById('climate-topbar-sub');
     if (!sub) return;
     const s = summary();
-    let text = `${s.count} zones`;
-    if (s.avgTemp != null) text += ` · ${fmtTemp(s.avgTemp, 0)}° avg`;
-    if (s.outdoor && s.outdoor.temperature != null) text += ` · ${fmtTemp(s.outdoor.temperature, 0)}° outside`;
-    sub.textContent = text;
+    const parts = [];
+    if (s.avgTemp != null) parts.push(`${fmtTemp(s.avgTemp, 0)}° avg`);
+    parts.push(`${s.count} zones`);
+    if (s.running > 0) parts.push(`${s.running} running`);
+    if (s.outdoor && s.outdoor.temperature != null) parts.push(`${fmtTemp(s.outdoor.temperature, 0)}° outside`);
+    sub.textContent = parts.join(' · ');
   }
 
   function allOnClimate(ref) {
@@ -303,7 +413,6 @@ const Climate = (() => {
   function anyManualHold() {
     return S.thermostats.some((t) => t.activeHold && !isScheduleHold(t.activeHold));
   }
-
   function paintBar() {
     const bar = document.getElementById('climate-bar');
     if (!bar) return;
@@ -312,363 +421,516 @@ const Climate = (() => {
       if (!btn) return;
       btn.classList.toggle('active', allOnClimate(ref));
       btn.disabled = !!S.globalBusy;
-      if (S.globalBusy === ref) btn.innerHTML = `<span class="climate-bar-glyph">…</span> ${ref[0].toUpperCase() + ref.slice(1)}`;
     });
     const resume = bar.querySelector('[data-resume-all]');
-    if (resume) {
-      resume.disabled = !!S.globalBusy || !anyManualHold();
-      if (S.globalBusy === 'resume-all') resume.innerHTML = `<span class="climate-bar-glyph">…</span> Resume Schedule`;
-    }
+    if (resume) resume.disabled = !!S.globalBusy || !anyManualHold();
   }
 
-  function paintGrid() {
-    const grid = document.getElementById('climate-grid');
-    if (!grid) return;
-    const ts = effectiveThermostats();
-    grid.innerHTML = ts.map(renderZoneTile).join('');
-
-    // Wire per-tile handlers
-    grid.querySelectorAll('.zone-tile').forEach((el) => {
-      const idx = parseInt(el.dataset.index, 10);
-      el.addEventListener('click', (e) => {
-        // Ignore clicks on nudge buttons / hold-clear
-        if (e.target.closest('.nudge-btn') || e.target.closest('.zone-hold-clear')) return;
-        openDetail(idx);
-      });
-      // Nudges
-      el.querySelectorAll('.nudge-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const which = btn.dataset.which;
-          const delta = parseInt(btn.dataset.delta, 10);
-          nudge(idx, which, delta);
-        });
-      });
-      // Manual hold clear
-      const clr = el.querySelector('.zone-hold-clear');
-      if (clr) {
-        clr.addEventListener('click', (e) => {
-          e.stopPropagation();
-          resumeZone(idx);
-        });
-      }
-    });
-
-    // If a detail is open, re-render it too
-    if (S.expandedIndex != null) paintDetail();
-  }
-
-  function renderZoneTile(t) {
+  function renderZoneCard(t) {
     const target = t.hvacMode === 'heat' ? t.desiredHeat
       : t.hvacMode === 'cool' ? t.desiredCool
       : t.hvacMode === 'auto' ? ((t.desiredHeat ?? 70) + (t.desiredCool ?? 76)) / 2
       : null;
+    // Hero temp stays neutral white by design; the mode label + hold pill
+    // carry the color signal. (Removed 2026-08-03 after design review — the
+    // previous variable-color tempClass muddied the hierarchy.)
+    void target;
+    const tempClass = '';
 
-    // Color the actual temp based on delta from target
-    let tempColor = '';
-    if (t.hvacMode !== 'off' && t.actualTemperature != null && target != null) {
-      const d = t.actualTemperature - target;
-      if (Math.abs(d) >= 1) tempColor = d > 0 ? 'zone-temp--warm' : 'zone-temp--cool';
-    }
+    const modeItem = (() => {
+      if (t.hvacMode === 'cool') return { cls: 'zone-card-status-item--cool', icon: ICONS.snowflake, label: 'Cool' };
+      if (t.hvacMode === 'heat') return { cls: 'zone-card-status-item--heat', icon: ICONS.flame, label: 'Heat' };
+      if (t.hvacMode === 'auto') return { cls: '', icon: ICONS.auto, label: 'Auto' };
+      return { cls: 'zone-card-status-item--off', icon: ICONS.power, label: 'Off' };
+    })();
 
-    const isOff = t.hvacMode === 'off';
-    const running = t.equipmentStatus && t.equipmentStatus.length > 0;
     const hold = t.activeHold;
     const holdIsSched = isScheduleHold(hold);
+    const running = t.equipmentStatus && t.equipmentStatus.length > 0;
     const hasPending = !!S.pending[t.index];
 
-    const setpointHTML = isOff
-      ? `<span class="zone-setpoint-off">off</span>`
-      : t.hvacMode === 'auto'
-      ? `<span class="zone-setpoint-heat">${fmtTemp(t.desiredHeat, 0)}°</span>
-         <span class="zone-setpoint-sep">·</span>
-         <span class="zone-setpoint-cool">${fmtTemp(t.desiredCool, 0)}°</span>`
-      : `<span class="zone-setpoint-single">${fmtTemp(t.hvacMode === 'heat' ? t.desiredHeat : t.desiredCool, 0)}°</span>`;
+    let holdHTML = '';
+    if (hold) {
+      const val = holdIsSched ? '' : fmtTemp(hold.coolHoldTemp ?? hold.heatHoldTemp, 0) + '°';
+      const label = holdIsSched
+        ? (hold.holdClimateRef.charAt(0).toUpperCase() + hold.holdClimateRef.slice(1))
+        : (fmtEndTime(hold) || 'manual hold');
+      const pillClass = holdIsSched
+        ? 'zone-hold-pill--schedule'
+        : (t.hvacMode === 'heat' ? 'zone-hold-pill--heat' : '');
+      holdHTML = `
+        <div class="zone-card-hold-slot">
+          <div class="zone-hold-pill ${pillClass}">
+            ${val ? `<span class="zone-hold-pill-value">${val}</span><span class="zone-hold-pill-sep"></span>` : ''}
+            <span class="zone-hold-pill-label">${esc(label)}</span>
+            ${holdIsSched ? '' : '<span class="zone-hold-pill-close" role="button" tabindex="0" aria-label="Resume schedule">' + ICONS.close + '</span>'}
+          </div>
+        </div>
+      `;
+    } else {
+      // Instead of blank space, show a subtle "on schedule" indicator with the
+      // current climate's target so info density matches held cards.
+      const setpointStr = t.hvacMode === 'off'
+        ? 'Off'
+        : t.hvacMode === 'auto'
+          ? `Auto · ${fmtTemp(t.desiredHeat, 0)}–${fmtTemp(t.desiredCool, 0)}°`
+          : `${t.hvacMode === 'heat' ? 'Heat' : 'Cool'} to ${fmtTemp(activeSetpoint(t), 0)}°`;
+      holdHTML = `
+        <div class="zone-card-hold-slot">
+          <div class="zone-hold-placeholder">
+            <span class="zone-hold-placeholder-target">${esc(setpointStr)}</span>
+            <span class="zone-hold-placeholder-sep">·</span>
+            <span>On schedule</span>
+          </div>
+        </div>
+      `;
+    }
 
-    const holdChip = hold ? `
-      <div class="zone-hold ${holdIsSched ? 'zone-hold--schedule' : 'zone-hold--manual'}"
-           title="${holdIsSched ? 'On ' + esc(hold.holdClimateRef) + ' schedule' : 'Manual hold — tap × to resume schedule'}">
-        <span class="zone-hold-glyph">${climateGlyph(hold.holdClimateRef)}</span>
-        ${holdIsSched ? '' : '<span class="zone-hold-clear" role="button" aria-label="Resume schedule">×</span>'}
+    // Running tag: shown INSIDE the card, subtly, only when equipment is active.
+    // Keeps the header "N running" stat honest at the card level too.
+    const runningHTML = running ? `
+      <div class="zone-card-hold-slot" style="margin-top:6px;">
+        <span class="zone-card-running-tag">
+          <span class="zone-card-running-dot"></span>${esc(t.equipmentStatus.join(' · '))}
+        </span>
       </div>
     ` : '';
 
-    const nudges = isOff ? '' : `
-      <div class="zone-nudges">
-        ${t.hvacMode === 'auto' ? `
-          <div class="nudge-group">
-            <span class="nudge-label">heat</span>
-            <button class="nudge-btn" data-which="heat" data-delta="-1" aria-label="heat down">−</button>
-            <button class="nudge-btn" data-which="heat" data-delta="1" aria-label="heat up">+</button>
-          </div>
-          <div class="nudge-group">
-            <span class="nudge-label">cool</span>
-            <button class="nudge-btn" data-which="cool" data-delta="-1" aria-label="cool down">−</button>
-            <button class="nudge-btn" data-which="cool" data-delta="1" aria-label="cool up">+</button>
-          </div>
-        ` : `
-          <div class="nudge-group">
-            <button class="nudge-btn" data-which="${t.hvacMode === 'heat' ? 'heat' : 'cool'}" data-delta="-1" aria-label="down">−</button>
-            <button class="nudge-btn" data-which="${t.hvacMode === 'heat' ? 'heat' : 'cool'}" data-delta="1" aria-label="up">+</button>
-          </div>
-        `}
-      </div>
-    `;
-
     return `
-      <button class="zone-tile ${isOff ? 'zone-tile--off' : ''} ${hasPending ? 'zone-tile--pending' : ''}"
+      <button class="zone-card ${t.hvacMode === 'off' ? 'zone-card--off' : ''} ${hasPending ? 'zone-card--pending' : ''}"
               data-index="${t.index}">
-        <div class="zone-tile-top">
-          <div class="zone-name">${esc(t.name)}</div>
-          ${holdChip}
-        </div>
-        <div class="zone-temp ${tempColor}">
-          ${fmtTemp(t.actualTemperature, 1)}<span class="zone-temp-unit">°</span>
-        </div>
-        <div class="zone-setpoint">${setpointHTML}</div>
-        <div class="zone-tile-bottom">
-          <div class="zone-mode zone-mode--${t.hvacMode}">
-            <span class="zone-mode-glyph">${modeIcon(t.hvacMode)}</span>${modeLabel(t.hvacMode)}
+        <div class="zone-card-top">
+          <div class="zone-card-name-group">
+            <span class="zone-card-thermo-icon">${ICONS.thermostat}</span>
+            <span class="zone-card-name">${esc(t.name)}</span>
           </div>
-          ${running ? `<div class="zone-running" title="${esc(t.equipmentStatus.join(', '))}"><span class="zone-running-dot"></span>running</div>` : ''}
+          <span class="zone-card-more" aria-hidden="true">${ICONS.more}</span>
         </div>
-        ${nudges}
+
+        <div class="zone-card-status">
+          <div class="zone-card-status-item">${ICONS.droplet} ${t.actualHumidity != null ? t.actualHumidity + '%' : '—'}</div>
+          <div class="zone-card-status-item ${modeItem.cls}">${modeItem.icon} ${modeItem.label}</div>
+        </div>
+
+        <div class="zone-card-temp ${tempClass}">${fmtTemp(t.actualTemperature, 0)}</div>
+
+        ${holdHTML}
+
+        ${runningHTML}
       </button>
     `;
   }
 
-  // ─── Zone detail modal ──────────────────────────────────────────────────
-  function openDetail(index) {
-    S.expandedIndex = index;
-    paintDetail();
-  }
-  function closeDetail() {
-    S.expandedIndex = null;
-    const bd = document.getElementById('climate-detail-backdrop');
-    if (bd) bd.remove();
-  }
-
-  function paintDetail() {
-    if (S.expandedIndex == null) return;
-    const t = effectiveThermostats().find((x) => x.index === S.expandedIndex);
-    if (!t) return closeDetail();
-
+  // ─── VIEW 2: Zone detail (full-screen takeover) ────────────────────────
+  function renderDetail() {
+    if (S.detailIndex == null) return;
     let bd = document.getElementById('climate-detail-backdrop');
     if (!bd) {
       bd = document.createElement('div');
       bd.id = 'climate-detail-backdrop';
       bd.className = 'climate-detail-backdrop';
-      bd.addEventListener('click', (e) => {
-        if (e.target === bd) closeDetail();
-      });
       document.body.appendChild(bd);
     }
+    paintDetail();
+  }
 
+  function paintDetail() {
+    const bd = document.getElementById('climate-detail-backdrop');
+    if (!bd) return;
+    const t = findThermostat(S.detailIndex);
+    if (!t) { closeDetail(); return; }
+
+    const isOff = t.hvacMode === 'off';
+    const running = t.equipmentStatus && t.equipmentStatus.length > 0;
     const hold = t.activeHold;
     const holdIsSched = isScheduleHold(hold);
-    const running = t.equipmentStatus && t.equipmentStatus.length > 0;
 
-    const statusBits = [];
-    if (t.actualHumidity != null) statusBits.push(`${t.actualHumidity}% humidity`);
-    if (running) statusBits.push(`<span class="detail-running-tag"><span class="zone-running-dot"></span>${esc(t.equipmentStatus.join(' · '))}</span>`);
+    let holdHTML = '';
     if (hold) {
-      const label = holdIsSched ? esc(hold.holdClimateRef || '') : 'manual hold';
-      statusBits.push(`<span class="detail-hold-tag ${holdIsSched ? 'detail-hold-tag--sched' : 'detail-hold-tag--manual'}">${climateGlyph(hold.holdClimateRef)} ${label}</span>`);
-    }
-
-    const targetHTML = t.hvacMode === 'off'
-      ? `<div class="detail-target-off">system off</div>`
-      : t.hvacMode === 'auto'
-      ? `
-        <div class="detail-dial detail-dial--heat">
-          <div class="detail-dial-label">heat</div>
-          <div class="detail-dial-row">
-            <button class="detail-dial-btn" data-nudge-which="heat" data-nudge-delta="-1" aria-label="heat down">−</button>
-            <div class="detail-dial-value">${fmtTemp(t.desiredHeat, 0)}°</div>
-            <button class="detail-dial-btn" data-nudge-which="heat" data-nudge-delta="1" aria-label="heat up">+</button>
-          </div>
-        </div>
-        <div class="detail-dial detail-dial--cool">
-          <div class="detail-dial-label">cool</div>
-          <div class="detail-dial-row">
-            <button class="detail-dial-btn" data-nudge-which="cool" data-nudge-delta="-1" aria-label="cool down">−</button>
-            <div class="detail-dial-value">${fmtTemp(t.desiredCool, 0)}°</div>
-            <button class="detail-dial-btn" data-nudge-which="cool" data-nudge-delta="1" aria-label="cool up">+</button>
-          </div>
-        </div>
-      `
-      : `
-        <div class="detail-dial detail-dial--${t.hvacMode}">
-          <div class="detail-dial-label">${t.hvacMode === 'heat' ? 'heat to' : 'cool to'}</div>
-          <div class="detail-dial-row">
-            <button class="detail-dial-btn" data-nudge-which="${t.hvacMode}" data-nudge-delta="-1" aria-label="down">−</button>
-            <div class="detail-dial-value">${fmtTemp(t.hvacMode === 'heat' ? t.desiredHeat : t.desiredCool, 0)}°</div>
-            <button class="detail-dial-btn" data-nudge-which="${t.hvacMode}" data-nudge-delta="1" aria-label="up">+</button>
+      const val = holdIsSched ? '' : fmtTemp(hold.coolHoldTemp ?? hold.heatHoldTemp, 0) + '°';
+      const label = holdIsSched
+        ? (hold.holdClimateRef.charAt(0).toUpperCase() + hold.holdClimateRef.slice(1))
+        : (fmtEndTime(hold) || 'manual hold');
+      const pillClass = holdIsSched
+        ? 'zone-hold-pill--schedule'
+        : (t.hvacMode === 'heat' ? 'zone-hold-pill--heat' : '');
+      holdHTML = `
+        <div class="detail-hold-slot">
+          <div class="zone-hold-pill ${pillClass}">
+            ${val ? `<span class="zone-hold-pill-value">${val}</span><span class="zone-hold-pill-sep"></span>` : ''}
+            <span class="zone-hold-pill-label">${esc(label)}</span>
+            ${holdIsSched ? '' : '<span class="zone-hold-pill-close" role="button" tabindex="0" id="detail-resume-btn" aria-label="Resume schedule">' + ICONS.close + '</span>'}
           </div>
         </div>
       `;
+    } else {
+      holdHTML = `<div class="detail-hold-slot"><div class="zone-hold-placeholder">On schedule</div></div>`;
+    }
 
-    const modePills = ['heat', 'cool', 'auto', 'off'].map((m) => `
-      <button class="detail-pill ${t.hvacMode === m ? 'detail-pill--active' : ''}" data-mode="${m}">
-        <span class="detail-pill-glyph">${modeIcon(m)}</span> ${modeLabel(m)}
-      </button>
-    `).join('');
+    // Bottom action row: comfort presets (moon = sleep), mode toggle, settings sheet
+    const currentIsSleep = hold && holdIsSched && (hold.holdClimateRef || '').toLowerCase().includes('sleep');
+    const modeClass = t.hvacMode === 'heat' ? 'action-heat' : '';
+
+    bd.innerHTML = `
+      <div class="topbar detail-topbar">
+        <div class="detail-topbar-wrap">
+          <button class="climate-back" id="detail-back-btn" aria-label="Back">${ICONS.back}</button>
+          <div class="detail-title">${esc(t.name)}</div>
+          <button class="climate-icon-btn" id="detail-settings-btn" aria-label="Settings">${ICONS.gear}</button>
+        </div>
+      </div>
+
+      <div class="detail-body">
+        <div class="detail-stack">
+          <div class="detail-humidity">
+            ${ICONS.droplet} ${t.actualHumidity != null ? t.actualHumidity + '%' : '—'}
+          </div>
+
+          <div class="detail-hero" id="detail-hero" title="Tap to adjust setpoint">
+            ${fmtTemp(t.actualTemperature, 0)}
+          </div>
+          <div class="detail-hero-hint">
+            ${isOff ? 'System Off' :
+              t.hvacMode === 'auto'
+                ? `Heat ${fmtTemp(t.desiredHeat, 0)}° · Cool ${fmtTemp(t.desiredCool, 0)}°`
+                : `${t.hvacMode === 'heat' ? 'Heat' : 'Cool'} to ${fmtTemp(activeSetpoint(t), 0)}° · tap to change`
+            }
+          </div>
+
+          ${holdHTML}
+        </div>
+      </div>
+
+      <div class="detail-actions">
+        <button class="detail-action-btn ${currentIsSleep ? 'active' : ''}" id="detail-sleep-btn" aria-label="Sleep comfort">
+          ${ICONS.moon}
+        </button>
+        <button class="detail-action-btn active ${modeClass}" id="detail-mode-btn" aria-label="Mode">
+          ${modeIcon(t.hvacMode)}
+        </button>
+        <button class="detail-action-btn" id="detail-more-btn" aria-label="Settings">
+          ${ICONS.sliders}
+        </button>
+      </div>
+    `;
+
+    // Wire
+    bd.querySelector('#detail-back-btn').addEventListener('click', closeDetail);
+    bd.querySelector('#detail-hero').addEventListener('click', () => {
+      if (isOff) { pushToast('Turn system on first'); return; }
+      openPicker(t.index, t.hvacMode === 'heat' ? 'heat' : 'cool');
+    });
+    bd.querySelector('#detail-sleep-btn').addEventListener('click', () => {
+      // Toggle sleep: if currently on sleep schedule, resume; otherwise apply sleep
+      if (currentIsSleep) resumeZone(t.index);
+      else setClimate(t.index, 'sleep');
+    });
+    bd.querySelector('#detail-mode-btn').addEventListener('click', () => openSettings('mode'));
+    bd.querySelector('#detail-more-btn').addEventListener('click', () => openSettings());
+    const settingsBtn = bd.querySelector('#detail-settings-btn');
+    if (settingsBtn) settingsBtn.addEventListener('click', () => openSettings());
+    const resumeBtn = bd.querySelector('#detail-resume-btn');
+    if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resumeZone(t.index);
+    });
+  }
+
+  function closeDetail() {
+    location.hash = '/climate';
+  }
+
+  // ─── VIEW 3: Setpoint picker (wheel + squircle tile) ───────────────────
+  function openPicker(index, mode) {
+    location.hash = `/climate/${index}/set/${mode}`;
+  }
+
+  function renderPicker() {
+    let pb = document.getElementById('setpoint-picker-backdrop');
+    if (!pb) {
+      pb = document.createElement('div');
+      pb.id = 'setpoint-picker-backdrop';
+      pb.className = 'setpoint-picker-backdrop';
+      document.body.appendChild(pb);
+    }
+    paintPicker();
+  }
+
+  function paintPicker() {
+    const pb = document.getElementById('setpoint-picker-backdrop');
+    if (!pb) return;
+    const t = findThermostat(S.pickerIndex);
+    if (!t) { closePicker(); return; }
+
+    const mode = S.pickerMode;
+    const val = S.pickerValue ?? (mode === 'heat' ? t.desiredHeat : t.desiredCool) ?? 72;
+    const isHeat = mode === 'heat';
+    const isAuto = t.hvacMode === 'auto';
+
+    // Bounds
+    const min = isHeat ? (t.settings?.heatMinTemp ?? 45) : (t.settings?.coolMinTemp ?? 55);
+    const max = isHeat ? (t.settings?.heatMaxTemp ?? 79) : (t.settings?.coolMaxTemp ?? 92);
+
+    const minusDisabled = val <= min;
+    const plusDisabled = val >= max;
+
+    // Neighbors on the wheel
+    const above2 = val + 2, above1 = val + 1;
+    const below1 = val - 1, below2 = val - 2;
+
+    // Auto-mode tabs
+    const tabsHTML = isAuto ? `
+      <div class="setpoint-picker-tabs">
+        <button class="setpoint-picker-tab ${mode === 'heat' ? 'active tab-heat' : ''}" data-picker-tab="heat">Heat</button>
+        <button class="setpoint-picker-tab ${mode === 'cool' ? 'active tab-cool' : ''}" data-picker-tab="cool">Cool</button>
+      </div>
+    ` : '';
+
+    pb.innerHTML = `
+      <div class="setpoint-picker-topbar">
+        <button class="climate-back" id="picker-back-btn" aria-label="Back">${ICONS.back}</button>
+        <div style="text-align:center; flex:1;">
+          <div class="climate-topbar-title">${esc(t.name)}</div>
+          <div class="climate-topbar-sub">${isHeat ? 'Heat to' : 'Cool to'}</div>
+        </div>
+        <div style="width:36px"></div>
+      </div>
+
+      ${tabsHTML ? '<div style="padding:8px 20px 0;">' + tabsHTML + '</div>' : ''}
+
+      <div class="setpoint-picker-body">
+        <div class="setpoint-wheel">
+          <div class="setpoint-wheel-num setpoint-wheel-num--far" data-picker-set="${above2}">${above2}</div>
+          <div class="setpoint-wheel-num setpoint-wheel-num--near" data-picker-set="${above1}">${above1}</div>
+          <div class="setpoint-wheel-selected ${isHeat ? 'setpoint-wheel-selected--heat' : ''}" id="picker-selected">${val}</div>
+          <div class="setpoint-wheel-num setpoint-wheel-num--near" data-picker-set="${below1}">${below1}</div>
+          <div class="setpoint-wheel-num setpoint-wheel-num--far" data-picker-set="${below2}">${below2}</div>
+        </div>
+
+        <div class="setpoint-controls">
+          <button class="setpoint-btn ${isHeat ? 'setpoint-btn--heat' : ''}" id="picker-plus" ${plusDisabled ? 'disabled' : ''} aria-label="+1">+</button>
+          <button class="setpoint-btn ${isHeat ? 'setpoint-btn--heat' : ''}" id="picker-minus" ${minusDisabled ? 'disabled' : ''} aria-label="−1">−</button>
+          <!-- Order matters: on desktop these stack vertically with + on top
+               (matches ecobee reference). On mobile the @media flips to a row;
+               the CSS reverses the row so − lands on the left, + on the right. -->
+        </div>
+      </div>
+
+      <div class="setpoint-picker-footer">
+        <button class="setpoint-picker-footer-btn" id="picker-cancel">Cancel</button>
+        <button class="setpoint-picker-footer-btn setpoint-picker-footer-btn--primary ${isHeat ? 'footer-btn-heat' : ''}" id="picker-save">Set ${val}°</button>
+      </div>
+    `;
+
+    // Wire
+    pb.querySelector('#picker-back-btn').addEventListener('click', closePicker);
+    pb.querySelector('#picker-cancel').addEventListener('click', closePicker);
+    pb.querySelector('#picker-save').addEventListener('click', savePicker);
+    pb.querySelector('#picker-plus').addEventListener('click', () => bumpPicker(1));
+    pb.querySelector('#picker-minus').addEventListener('click', () => bumpPicker(-1));
+    pb.querySelectorAll('[data-picker-set]').forEach((el) => {
+      el.addEventListener('click', () => {
+        S.pickerValue = parseInt(el.dataset.pickerSet, 10);
+        paintPicker();
+      });
+    });
+    pb.querySelectorAll('[data-picker-tab]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const newMode = el.dataset.pickerTab;
+        S.pickerMode = newMode;
+        S.pickerValue = newMode === 'heat' ? t.desiredHeat : t.desiredCool;
+        location.hash = `/climate/${t.index}/set/${newMode}`;
+      });
+    });
+
+    // Wheel scroll (touch + mouse) to change value
+    let wheelDebounce = null;
+    const wheelEl = pb.querySelector('.setpoint-wheel');
+    if (wheelEl) {
+      wheelEl.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (wheelDebounce) return;
+        wheelDebounce = setTimeout(() => { wheelDebounce = null; }, 80);
+        bumpPicker(e.deltaY > 0 ? -1 : 1);
+      }, { passive: false });
+    }
+  }
+
+  function bumpPicker(delta) {
+    const t = findThermostat(S.pickerIndex);
+    if (!t) return;
+    const mode = S.pickerMode;
+    const isHeat = mode === 'heat';
+    const min = isHeat ? (t.settings?.heatMinTemp ?? 45) : (t.settings?.coolMinTemp ?? 55);
+    const max = isHeat ? (t.settings?.heatMaxTemp ?? 79) : (t.settings?.coolMaxTemp ?? 92);
+    let v = (S.pickerValue ?? (isHeat ? t.desiredHeat : t.desiredCool) ?? 72) + delta;
+    v = Math.min(max, Math.max(min, v));
+    S.pickerValue = v;
+    paintPicker();
+  }
+
+  async function savePicker() {
+    const t = findThermostat(S.pickerIndex);
+    if (!t) return closePicker();
+    const isHeat = S.pickerMode === 'heat';
+    const val = S.pickerValue;
+    const heat = isHeat ? val : (t.desiredHeat ?? 70);
+    const cool = isHeat ? (t.desiredCool ?? 76) : val;
+
+    // Optimistic
+    S.pending[t.index] = { heat, cool };
+    closePicker();
+    paintList();
+    paintDetail();
+
+    try {
+      await callAction({
+        action: 'hold-temp',
+        index: t.index,
+        coolTemp: cool,
+        heatTemp: heat,
+        holdType: 'nextTransition',
+      });
+      pushToast(`${t.name}: ${isHeat ? 'heat' : 'cool'} to ${val}°`);
+    } catch (e) {
+      pushToast(`${t.name}: ${e.message}`, 'err');
+    }
+    delete S.pending[t.index];
+    setTimeout(() => refresh(true), 400);
+  }
+
+  function closePicker() {
+    if (S.detailIndex != null) location.hash = `/climate/${S.detailIndex}`;
+    else location.hash = '/climate';
+  }
+
+  // ─── Settings bottom sheet ─────────────────────────────────────────────
+  function openSettings(focus) {
+    S.settingsOpen = true;
+    const t = findThermostat(S.detailIndex);
+    if (!t) return;
+
+    let sh = document.getElementById('settings-sheet-backdrop');
+    if (!sh) {
+      sh = document.createElement('div');
+      sh.id = 'settings-sheet-backdrop';
+      sh.className = 'settings-sheet-backdrop';
+      sh.addEventListener('click', (e) => { if (e.target === sh) closeSettings(); });
+      document.body.appendChild(sh);
+    }
+    paintSettings(focus);
+  }
+  function closeSettings() {
+    S.settingsOpen = false;
+    document.getElementById('settings-sheet-backdrop')?.remove();
+  }
+  function paintSettings(focus) {
+    const sh = document.getElementById('settings-sheet-backdrop');
+    if (!sh) return;
+    const t = findThermostat(S.detailIndex);
+    if (!t) return closeSettings();
+
+    const hold = t.activeHold;
+    const holdIsSched = isScheduleHold(hold);
+
+    const modePills = ['heat', 'cool', 'auto', 'off'].map((m) => {
+      const cls = t.hvacMode === m ? `active ${m === 'cool' ? 'pill-cool' : m === 'heat' ? 'pill-heat' : ''}` : '';
+      return `<button class="settings-pill ${cls}" data-mode="${m}">${modeIcon(m)} ${modeLabel(m)}</button>`;
+    }).join('');
 
     const fanPills = ['auto', 'on'].map((f) => `
-      <button class="detail-pill ${t.desiredFanMode === f ? 'detail-pill--active' : ''}" data-fan="${f}">${f}</button>
+      <button class="settings-pill ${t.desiredFanMode === f ? 'active' : ''}" data-fan="${f}">${f}</button>
     `).join('');
 
-    const climatePills = (t.climates || []).slice(0, 6).map((c) => `
-      <button class="detail-pill ${t.currentClimateRef === c.climateRef && holdIsSched ? 'detail-pill--active' : ''}"
-              data-climate="${esc(c.climateRef)}">
-        <span class="detail-pill-glyph">${climateGlyph(c.climateRef)}</span> ${esc(c.name)}
-        ${c.heatTemp != null && c.coolTemp != null ? `<span class="detail-pill-sub">${fmtTemp(c.heatTemp, 0)}·${fmtTemp(c.coolTemp, 0)}°</span>` : ''}
-      </button>
-    `).join('');
+    const climatePills = (t.climates || []).slice(0, 6).map((c) => {
+      const active = t.currentClimateRef === c.climateRef && holdIsSched;
+      return `<button class="settings-pill ${active ? 'active' : ''}" data-climate="${esc(c.climateRef)}">
+        ${climateIcon(c.climateRef)} ${esc(c.name)}
+        ${c.heatTemp != null && c.coolTemp != null ? `<span class="settings-pill-sub">${fmtTemp(c.heatTemp, 0)}·${fmtTemp(c.coolTemp, 0)}°</span>` : ''}
+      </button>`;
+    }).join('');
 
-    const sensorList = (t.sensors || []).length === 0 ? '' : `
-      <div class="detail-row">
-        <div class="detail-label">Sensors</div>
-        <div class="detail-sensors">
+    const sensorsHTML = (t.sensors || []).length === 0 ? '' : `
+      <div class="settings-sheet-section">
+        <div class="settings-sheet-section-label">Sensors</div>
+        <div class="settings-sensors">
           ${t.sensors.map((s) => `
-            <div class="detail-sensor ${s.inUse ? 'detail-sensor--in-use' : ''}">
-              <div class="detail-sensor-name">
+            <div class="settings-sensor ${s.inUse ? 'settings-sensor--in-use' : ''}">
+              <div class="settings-sensor-name">
                 ${esc(s.name)}
-                ${s.occupancy ? '<span class="detail-sensor-occ" title="occupied">●</span>' : ''}
+                ${s.occupancy ? '<span class="settings-sensor-occ" title="occupied">●</span>' : ''}
               </div>
-              <div class="detail-sensor-temp">${fmtTemp(s.temperature, 1)}°</div>
+              <div class="settings-sensor-temp">${fmtTemp(s.temperature, 1)}°</div>
             </div>
           `).join('')}
         </div>
       </div>
     `;
 
-    bd.innerHTML = `
-      <div class="climate-detail" role="dialog" aria-modal="true">
-        <div class="detail-header">
-          <div>
-            <div class="detail-name">${esc(t.name)}</div>
-            ${statusBits.length ? `<div class="detail-status">${statusBits.join('<span class="detail-status-sep">·</span>')}</div>` : ''}
-          </div>
-          <button class="detail-close" aria-label="Close">✕</button>
+    sh.innerHTML = `
+      <div class="settings-sheet" style="position:relative;">
+        <div class="settings-sheet-handle"></div>
+        <button class="settings-sheet-close" id="settings-close-btn" aria-label="Close">${ICONS.close}</button>
+        <div class="settings-sheet-title">${esc(t.name)}</div>
+        <div class="settings-sheet-sub">Settings & mode</div>
+
+        <div class="settings-sheet-section" id="settings-mode-section">
+          <div class="settings-sheet-section-label">System</div>
+          <div class="settings-pills">${modePills}</div>
         </div>
 
-        <div class="detail-body">
-          <div class="detail-actual">
-            <div class="detail-actual-value">${fmtTemp(t.actualTemperature, 1)}<span class="detail-actual-unit">°</span></div>
-            <div class="detail-target-wrap">${targetHTML}</div>
-          </div>
+        <div class="settings-sheet-section">
+          <div class="settings-sheet-section-label">Fan</div>
+          <div class="settings-pills">${fanPills}</div>
+        </div>
 
-          <div class="detail-row">
-            <div class="detail-label">Mode</div>
-            <div class="detail-pills">${modePills}</div>
-          </div>
-
-          <div class="detail-row">
-            <div class="detail-label">Fan</div>
-            <div class="detail-pills">${fanPills}</div>
-          </div>
-
-          ${climatePills ? `
-          <div class="detail-row">
-            <div class="detail-label">Comfort</div>
-            <div class="detail-pills">${climatePills}</div>
+        ${climatePills ? `
+          <div class="settings-sheet-section">
+            <div class="settings-sheet-section-label">Comfort profile</div>
+            <div class="settings-pills">${climatePills}</div>
           </div>` : ''}
 
-          <div class="detail-row">
-            <div class="detail-label">Actions</div>
-            <div class="detail-pills">
-              <button class="detail-pill detail-pill--action"
-                      data-resume-zone
-                      ${!hold || holdIsSched ? 'disabled' : ''}>
-                <span class="detail-pill-glyph">↺</span> Resume Schedule
-              </button>
-            </div>
-          </div>
+        ${sensorsHTML}
 
-          ${sensorList}
+        <div class="settings-sheet-section" style="margin-bottom:0;">
+          <button class="settings-action-btn" id="settings-resume-btn"
+                  ${!hold || holdIsSched ? 'disabled' : ''}>
+            ${ICONS.refresh} Resume Schedule
+          </button>
         </div>
-
-        ${S.pending[t.index] ? '<div class="detail-pending">Saving…</div>' : ''}
       </div>
     `;
 
-    // Wire handlers
-    bd.querySelector('.detail-close').addEventListener('click', closeDetail);
-    bd.querySelectorAll('[data-nudge-which]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        nudge(t.index, btn.dataset.nudgeWhich, parseInt(btn.dataset.nudgeDelta, 10));
-      });
-    });
-    bd.querySelectorAll('[data-mode]').forEach((btn) => {
+    sh.querySelector('#settings-close-btn').addEventListener('click', closeSettings);
+    sh.querySelectorAll('[data-mode]').forEach((btn) => {
       btn.addEventListener('click', () => setMode(t.index, btn.dataset.mode));
     });
-    bd.querySelectorAll('[data-fan]').forEach((btn) => {
+    sh.querySelectorAll('[data-fan]').forEach((btn) => {
       btn.addEventListener('click', () => setFan(t.index, btn.dataset.fan));
     });
-    bd.querySelectorAll('[data-climate]').forEach((btn) => {
+    sh.querySelectorAll('[data-climate]').forEach((btn) => {
       btn.addEventListener('click', () => setClimate(t.index, btn.dataset.climate));
     });
-    const resumeBtn = bd.querySelector('[data-resume-zone]');
-    if (resumeBtn) resumeBtn.addEventListener('click', () => resumeZone(t.index));
+    const resume = sh.querySelector('#settings-resume-btn');
+    if (resume) resume.addEventListener('click', () => { resumeZone(t.index); closeSettings(); });
+
+    if (focus === 'mode') {
+      const el = sh.querySelector('#settings-mode-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   // ─── Mutations ──────────────────────────────────────────────────────────
-  function nudge(index, which, delta) {
-    const t = S.thermostats.find((x) => x.index === index);
-    if (!t) return;
-    const cur = S.pending[index] || {};
-    const heatBase = cur.heat ?? t.desiredHeat ?? 70;
-    const coolBase = cur.cool ?? t.desiredCool ?? 76;
-    let heat = heatBase;
-    let cool = coolBase;
-    if (which === 'heat') heat = Math.round(heatBase + delta);
-    else cool = Math.round(coolBase + delta);
-    if (t.hvacMode === 'auto') {
-      const minDelta = (t.settings && t.settings.heatCoolMinDelta) || 5;
-      if (cool - heat < minDelta) {
-        if (which === 'heat') cool = heat + minDelta;
-        else heat = cool - minDelta;
-      }
-    }
-    S.pending[index] = { ...cur, heat, cool };
-    paintGrid();
-
-    // Debounced commit
-    if (debounceTimers[index]) clearTimeout(debounceTimers[index]);
-    debounceTimers[index] = setTimeout(() => commitTempHold(index), NUDGE_DEBOUNCE_MS);
-  }
-
-  async function commitTempHold(index) {
-    const t = S.thermostats.find((x) => x.index === index);
-    const p = S.pending[index];
-    if (!t || !p) return;
-    const heat = p.heat ?? t.desiredHeat ?? 70;
-    const cool = p.cool ?? t.desiredCool ?? 76;
-    try {
-      await callAction({
-        action: 'hold-temp',
-        index,
-        coolTemp: cool,
-        heatTemp: heat,
-        holdType: 'nextTransition',
-      });
-      pushToast(`${t.name}: ${fmtTemp(heat, 0)}° / ${fmtTemp(cool, 0)}°`);
-    } catch (e) {
-      pushToast(`${t.name}: ${e.message}`, 'err');
-    }
-    delete S.pending[index];
-    setTimeout(() => refresh(true), 400);
-  }
-
   async function setMode(index, mode) {
     const t = S.thermostats.find((x) => x.index === index);
     if (!t || mode === t.hvacMode) return;
     S.pending[index] = { ...(S.pending[index] || {}), mode };
-    paintGrid();
+    paintList();
+    paintDetail();
+    if (S.settingsOpen) paintSettings();
     try {
       await callAction({ action: 'hvac-mode', index, hvacMode: mode });
-      pushToast(`${t.name}: mode → ${modeLabel(mode)}`);
+      pushToast(`${t.name}: ${modeLabel(mode)}`);
     } catch (e) {
       pushToast(`${t.name}: ${e.message}`, 'err');
     }
@@ -685,7 +947,7 @@ const Climate = (() => {
     if (!t) return;
     try {
       await callAction({ action: 'fan-mode', index, fanMode: fan, holdType: 'nextTransition' });
-      pushToast(`${t.name}: fan → ${fan}`);
+      pushToast(`${t.name}: fan ${fan}`);
     } catch (e) {
       pushToast(`${t.name}: ${e.message}`, 'err');
     }
@@ -697,7 +959,7 @@ const Climate = (() => {
     if (!t) return;
     try {
       await callAction({ action: 'hold-climate', index, climateRef: ref, holdType: 'nextTransition' });
-      pushToast(`${t.name}: → ${ref}`);
+      pushToast(`${t.name}: ${ref}`);
     } catch (e) {
       pushToast(`${t.name}: ${e.message}`, 'err');
     }
@@ -709,7 +971,7 @@ const Climate = (() => {
     if (!t) return;
     try {
       await callAction({ action: 'resume', index, resumeAll: false });
-      pushToast(`${t.name}: resumed`);
+      pushToast(`${t.name}: resumed schedule`);
     } catch (e) {
       pushToast(`${t.name}: ${e.message}`, 'err');
     }
@@ -749,17 +1011,18 @@ const Climate = (() => {
   async function refresh(force = false) {
     try {
       await fetchState(force);
-      paintAll();
+      paintList();
+      paintDetail();
+      if (S.settingsOpen) paintSettings();
     } catch (e) {
       console.warn('[climate] refresh:', e.message);
     }
   }
 
-  // For error-retry inline handler
   async function _retry() {
     try {
       await fetchState(true);
-      paintAll();
+      paintList();
       startPolling();
     } catch (e) {
       pushToast(e.message, 'err');

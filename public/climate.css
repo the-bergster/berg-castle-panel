@@ -1,689 +1,1064 @@
-/* Berg Castle · Climate
- * Same visual vocabulary as Lights/Music: dark, warm, minimal.
- * Amber accent stays hero. Climate introduces two supporting hues:
- *   --heat (coral) and --cool (soft steel-blue), muted so they read as data
- *   not decoration.
+/* Berg Castle · Climate v2 — ecobee-inspired polish
+ *
+ * Reference: the official ecobee mobile app screens.
+ *
+ * Design principles:
+ *   • Navy background, NEVER black. Blue undertone is the signature.
+ *   • Green = nav / brand accent. Blue = active cool / setpoint interaction.
+ *     Amber = active heat. Never mix in the same control.
+ *   • Thin numerals vs. bold labels — the elegance is in the contrast.
+ *   • Squircle cards (super-elliptical corners), stadium pills for holds.
+ *   • Big numbers breathe. Massive negative space.
  */
 
 :root {
-  --heat: #ff8f6b;
-  --heat-dim: rgba(255, 143, 107, 0.15);
-  --heat-bright: #ffb090;
-  --cool: #78b6d9;
-  --cool-dim: rgba(120, 182, 217, 0.12);
-  --cool-bright: #9fcae8;
+  /* ---- Climate palette (scoped so the panel's amber stays hero elsewhere) ---- */
+  --clim-bg-0: #0F1A2A;
+  --clim-bg-1: #16202F;
+  --clim-bg-2: #1A2637;
+  --clim-bg-3: #22314A;
+  --clim-line: rgba(255, 255, 255, 0.06);
+  --clim-line-strong: rgba(255, 255, 255, 0.12);
+
+  --clim-text: #FFFFFF;
+  --clim-text-mid: #B8C4D4;
+  --clim-text-dim: #8A97A8;
+  --clim-text-dimmer: #5A6B7E;
+
+  --clim-green: #2ECC8F;
+  --clim-green-bright: #3DD598;
+  --clim-green-dim: rgba(46, 204, 143, 0.16);
+
+  --clim-cool-1: #4A90F2;
+  --clim-cool-2: #2E6FE0;
+  --clim-cool-glow: rgba(74, 144, 242, 0.35);
+  --clim-cool-dim: rgba(74, 144, 242, 0.14);
+
+  --clim-heat-1: #F5A623;
+  --clim-heat-2: #E08A0E;
+  --clim-heat-glow: rgba(245, 166, 35, 0.35);
+  --clim-heat-dim: rgba(245, 166, 35, 0.14);
+
+  --clim-danger: #FF6A5C;
+
+  --clim-radius-card: 20px;
+  --clim-radius-tile: 22px;
+  --clim-radius-squircle: 26%;
+  --clim-radius-pill: 999px;
+
+  --clim-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --clim-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --clim-dur: 220ms;
+  --clim-dur-fast: 120ms;
 }
 
-/* ─── Top bar (page-scoped) ─── */
+/* ─── Page shell: navy bg, override the panel's default darker ───────── */
+body:has(.climate-page) {
+  background: var(--clim-bg-0);
+}
+
+/* ─── Top bar ────────────────────────────────────────────────────────── */
 .climate-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px calc(16px + var(--safe-top));
-  padding-top: calc(16px + var(--safe-top));
+  padding: calc(14px + var(--safe-top)) 20px 14px;
+  background: var(--clim-bg-1);
+  border-bottom: 1px solid var(--clim-line);
+}
+.climate-topbar-title {
+  display: block;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--clim-text);
+  text-align: center;
+}
+.climate-topbar-sub {
+  font-size: 11.5px;
+  color: var(--clim-text-dim);
+  margin-top: 2px;
+  letter-spacing: 0.01em;
 }
 .climate-back {
-  width: 40px; height: 40px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--text-mid);
-  display: inline-flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  transition: all var(--dur) var(--ease);
-}
-.climate-back:hover { color: var(--text); border-color: var(--line-strong); }
-.climate-back:active { transform: scale(0.95); }
-.climate-back svg { width: 18px; height: 18px; }
-
-/* ─── Page wrapper ─── */
-.climate-page {
-  padding: 0 20px 40px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* ─── Global comfort bar ─── */
-.climate-bar {
-  display: flex;
+  width: 36px; height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--clim-green);
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background var(--clim-dur-fast) var(--clim-ease);
 }
-.climate-bar-group { display: flex; gap: 6px; flex-wrap: wrap; }
-.climate-bar-group--right { margin-left: auto; }
+.climate-back:hover { background: var(--clim-green-dim); }
+.climate-back:active { transform: scale(0.94); }
+.climate-back svg { width: 22px; height: 22px; stroke-width: 2.2; }
 
+.climate-topbar-right {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.climate-icon-btn {
+  width: 36px; height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--clim-green);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--clim-dur-fast) var(--clim-ease);
+}
+.climate-icon-btn:hover { background: var(--clim-green-dim); }
+.climate-icon-btn:active { transform: scale(0.94); }
+.climate-icon-btn svg { width: 22px; height: 22px; stroke-width: 1.8; }
+
+/* ─── Page container ─────────────────────────────────────────────────── */
+.climate-page {
+  padding: 16px 16px calc(40px + var(--safe-bottom));
+  padding-left: max(16px, var(--safe-left));
+  padding-right: max(16px, var(--safe-right));
+  max-width: 640px;
+  margin: 0 auto;
+  min-height: calc(100vh - 60px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+/* ─── Global comfort bar (retained but re-styled) ─────────────────────── */
+.climate-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+  background: var(--clim-bg-2);
+  border-radius: var(--clim-radius-card);
+  margin-bottom: 14px;
+}
+.climate-bar-secondary-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
 .climate-bar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--text);
-  font: 500 14px/1 var(--font-body);
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: var(--clim-bg-3);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--clim-text);
+  font: 500 13.5px/1 var(--font-body);
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease);
-  min-height: 40px;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+  min-width: 0;
+  box-sizing: border-box;
 }
-.climate-bar-btn:hover:not(:disabled) {
-  background: var(--bg-3);
-  border-color: var(--line-strong);
-}
+.climate-bar-btn:hover:not(:disabled) { background: #2A3B57; }
 .climate-bar-btn:active:not(:disabled) { transform: scale(0.97); }
 .climate-bar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .climate-bar-btn.active {
-  background: rgba(255, 184, 77, 0.14);
-  border-color: var(--accent-dim);
-  color: var(--accent-bright);
-  box-shadow: 0 0 24px -6px var(--accent-glow);
+  background: var(--clim-green);
+  border-color: var(--clim-green);
+  color: #082014;
+  font-weight: 600;
 }
 .climate-bar-btn--secondary {
+  padding: 10px 20px;
   background: transparent;
-  color: var(--text-mid);
+  border: 1px solid var(--clim-line-strong);
+  color: var(--clim-text-mid);
+  border-radius: 999px;
+  font-size: 13px;
 }
-.climate-bar-btn--secondary:hover:not(:disabled) { color: var(--text); }
+.climate-bar-btn--secondary:hover:not(:disabled) { color: var(--clim-text); background: var(--clim-bg-2); }
 .climate-bar-glyph {
-  font-size: 15px;
-  opacity: 0.9;
-  min-width: 14px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.climate-bar-glyph svg { width: 15px; height: 15px; stroke-width: 1.8; fill: none; stroke: currentColor; }
 
-/* ─── Grid ─── */
+/* ─── Zone card grid (hub-level tiles, ecobee-styled) ────────────────── */
 .climate-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 .climate-loading, .climate-error {
-  grid-column: 1 / -1;
-  padding: 40px;
+  padding: 60px 20px;
   text-align: center;
-  color: var(--text-dim);
+  color: var(--clim-text-dim);
   font-size: 14px;
 }
 .climate-retry {
   display: inline-block;
-  margin-top: 12px;
-  padding: 8px 18px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: var(--text);
+  margin-top: 14px;
+  padding: 10px 20px;
+  background: var(--clim-bg-3);
+  border: 1px solid var(--clim-line-strong);
+  border-radius: 12px;
+  color: var(--clim-text);
   font: 500 13px/1 var(--font-body);
   cursor: pointer;
 }
-.climate-retry:hover { background: var(--bg-3); }
 
-/* ─── Zone tile ─── */
-.zone-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px 16px 14px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: 18px;
+/* Zone card (matches ecobee "Spa" tile in screenshot 3) */
+.zone-card {
+  background: var(--clim-bg-2);
+  border-radius: var(--clim-radius-card);
+  padding: 14px 20px 14px;
   cursor: pointer;
-  transition: all var(--dur) var(--ease);
-  color: var(--text);
+  border: 1px solid transparent;
+  transition: all var(--clim-dur) var(--clim-ease);
   text-align: left;
+  color: var(--clim-text);
   font-family: var(--font-body);
-  min-height: 148px;
+  width: 100%;
+  display: block;
+  position: relative;
+  box-sizing: border-box;
   overflow: hidden;
 }
-.zone-tile::before {
-  content: "";
-  position: absolute; inset: 0;
-  background: radial-gradient(120% 90% at 100% 0%, rgba(255,184,77,0.06), transparent 60%);
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
-  pointer-events: none;
+.zone-card:hover {
+  border-color: var(--clim-line-strong);
+  background: #1D2B3F;
 }
-.zone-tile:hover {
-  border-color: var(--line-strong);
-  transform: translateY(-2px);
-}
-.zone-tile:hover::before { opacity: 1; }
-.zone-tile:hover .zone-nudges {
-  opacity: 1;
-  pointer-events: auto;
-}
-.zone-tile:active { transform: scale(0.99); }
-.zone-tile--off { opacity: 0.55; }
-.zone-tile--pending::after {
+.zone-card:active { transform: scale(0.995); }
+.zone-card--off { opacity: 0.6; }
+.zone-card--pending::after {
   content: '';
   position: absolute;
-  top: 12px; right: 12px;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow);
-  animation: climate-pulse 1.2s ease-in-out infinite;
-}
-@keyframes climate-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
-
-.zone-tile-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-.zone-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-mid);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.15;
-}
-.zone-hold {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--bg-3);
-  color: var(--text-dim);
-  white-space: nowrap;
-  line-height: 1;
-}
-.zone-hold-glyph { font-size: 12px; }
-.zone-hold--schedule {
-  background: rgba(88, 232, 116, 0.10);
-  color: var(--success);
-}
-.zone-hold--manual {
-  background: var(--heat-dim);
-  color: var(--heat-bright);
-}
-.zone-hold-clear {
-  cursor: pointer;
-  margin-left: 3px;
-  padding: 0 4px;
-  border-radius: 4px;
-  transition: background var(--dur-fast) var(--ease);
-  font-weight: 600;
-  line-height: 1;
-}
-.zone-hold-clear:hover { background: rgba(255,255,255,0.1); }
-
-.zone-temp {
-  font-size: 40px;
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  margin: 6px 0 2px;
-  color: var(--text);
-  transition: color var(--dur) var(--ease);
-  font-feature-settings: 'tnum';
-}
-.zone-temp--warm { color: var(--heat-bright); }
-.zone-temp--cool { color: var(--cool-bright); }
-.zone-temp-unit {
-  font-size: 20px;
-  color: var(--text-dim);
-  font-weight: 400;
-  margin-left: 1px;
-}
-
-.zone-setpoint {
-  font-size: 13px;
-  color: var(--text-mid);
-  min-height: 18px;
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  font-feature-settings: 'tnum';
-}
-.zone-setpoint-off { color: var(--text-dimmer); font-style: italic; }
-.zone-setpoint-heat { color: var(--heat); font-weight: 500; }
-.zone-setpoint-cool { color: var(--cool); font-weight: 500; }
-.zone-setpoint-sep { color: var(--text-dimmer); }
-.zone-setpoint-single { color: var(--text); font-weight: 500; }
-
-.zone-tile-bottom {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-}
-.zone-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--bg-3);
-  color: var(--text-mid);
-  font-weight: 500;
-  text-transform: lowercase;
-  line-height: 1;
-}
-.zone-mode-glyph { font-size: 12px; opacity: 0.9; }
-.zone-mode--cool { color: var(--cool-bright); background: var(--cool-dim); }
-.zone-mode--heat { color: var(--heat-bright); background: var(--heat-dim); }
-.zone-mode--auto { color: var(--accent-bright); background: rgba(255,184,77,0.08); }
-.zone-mode--off  { color: var(--text-dimmer); }
-
-.zone-running {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--accent);
-  font-weight: 500;
-}
-.zone-running-dot {
+  top: 22px; right: 22px;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
-  animation: climate-pulse 1.8s ease-in-out infinite;
+  background: var(--clim-cool-1);
+  box-shadow: 0 0 10px var(--clim-cool-glow);
+  animation: clim-pulse 1.2s ease-in-out infinite;
+}
+@keyframes clim-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.2); }
 }
 
-/* Hover-reveal nudges */
-.zone-nudges {
-  position: absolute;
-  right: 12px;
-  bottom: 42px;
+.zone-card-top {
   display: flex;
-  gap: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur) var(--ease);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
 }
-@media (hover: none) {
-  /* On touch devices, always show */
-  .zone-nudges { opacity: 1; pointer-events: auto; }
+.zone-card-name-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
 }
-.nudge-group {
+.zone-card-thermo-icon {
+  width: 20px; height: 20px;
+  color: var(--clim-text-dim);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.zone-card-thermo-icon svg {
+  width: 100%; height: 100%;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+}
+.zone-card-name {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--clim-text);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.zone-card-more {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 3px;
-  background: rgba(8,8,10,0.85);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  color: var(--clim-text-dim);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
-.nudge-label {
-  font-size: 9px;
-  color: var(--text-dim);
-  margin: 0 4px 0 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.zone-card-more svg {
+  width: 14px; height: 14px;
+  stroke-width: 2;
+  fill: none;
+  stroke: currentColor;
+}
+
+.zone-card-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin: 0 0 2px;
+  color: var(--clim-text);
+  font-size: 14px;
   font-weight: 600;
 }
-.nudge-btn {
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  background: var(--bg-3);
-  border: none;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 400;
+.zone-card-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.zone-card-status-item svg {
+  width: 15px; height: 15px;
+  stroke-width: 2;
+}
+.zone-card-status-item--cool { color: var(--clim-cool-1); }
+.zone-card-status-item--cool svg { stroke: var(--clim-cool-1); }
+.zone-card-status-item--heat { color: var(--clim-heat-1); }
+.zone-card-status-item--heat svg { stroke: var(--clim-heat-1); }
+.zone-card-status-item--off { color: var(--clim-text-dim); }
+
+.zone-card-temp {
+  text-align: center;
+  font-size: 56px;
+  font-weight: 200;
+  letter-spacing: -0.04em;
   line-height: 1;
+  color: var(--clim-text);
+  font-feature-settings: 'tnum';
+  margin: 0 0 6px;
+}
+/* NOTE: colored temp classes removed 2026-08-03 per design review.
+ * Hero temp stays neutral white; color lives on the mode label + hold pill only.
+ * Retained as no-op selectors to avoid churn if renderer still emits them. */
+.zone-card-temp--warm, .zone-card-temp--cool { color: var(--clim-text); }
+
+/* Hold pill (stadium, blue-outlined, ecobee-signature) */
+.zone-card-hold-slot { display: flex; justify-content: center; }
+.zone-hold-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 8px 14px;
+  border: 1.5px solid var(--clim-cool-1);
+  border-radius: var(--clim-radius-pill);
+  background: transparent;
+  color: var(--clim-text);
+  font: 500 14px/1 var(--font-body);
+  min-height: 38px;
+}
+.zone-hold-pill--heat { border-color: var(--clim-heat-1); }
+.zone-hold-pill--schedule {
+  border-color: var(--clim-green);
+  color: var(--clim-text);
+}
+.zone-hold-pill-value {
+  font-weight: 600;
+  color: var(--clim-cool-1);
+  font-size: 15px;
+  font-feature-settings: 'tnum';
+}
+.zone-hold-pill--heat .zone-hold-pill-value { color: var(--clim-heat-1); }
+.zone-hold-pill--schedule .zone-hold-pill-value { color: var(--clim-green); }
+.zone-hold-pill-sep {
+  width: 1px;
+  height: 16px;
+  background: currentColor;
+  opacity: 0.35;
+  margin-right: -2px;
+}
+.zone-hold-pill-label {
+  color: var(--clim-text);
+  opacity: 0.9;
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.zone-hold-pill-close {
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--clim-text-mid);
+  color: var(--clim-text-mid);
+  background: transparent;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  margin-right: 2px;
+  flex-shrink: 0;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+  user-select: none;
+  -webkit-user-select: none;
 }
-.nudge-btn:hover { background: var(--bg-4); }
-.nudge-btn:active { transform: scale(0.88); }
+.zone-hold-pill-close svg {
+  width: 11px; height: 11px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+}
+.zone-hold-pill-close:hover {
+  color: var(--clim-text);
+  border-color: var(--clim-text);
+  background: rgba(255,255,255,0.06);
+}
 
-/* ─── Detail modal ─── */
+/* Fixed-height status slot so scheduled vs. held cards align (design review
+ * 2026-08-03: ragged card heights caused visual noise). */
+.zone-card-hold-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+  margin-top: 2px;
+}
+.zone-hold-placeholder {
+  color: var(--clim-text-dim);
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+}
+.zone-hold-placeholder::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--clim-green);
+  opacity: 0.7;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.zone-hold-placeholder-target {
+  color: var(--clim-text-mid);
+  font-weight: 500;
+  font-feature-settings: 'tnum';
+}
+.zone-hold-placeholder-sep {
+  color: var(--clim-text-dimmer);
+}
+
+/* Separator + reminder-style extras row */
+.zone-card-divider {
+  height: 1px;
+  background: var(--clim-line);
+  margin: 18px 0 14px;
+}
+.zone-card-extras {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--clim-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.zone-card-extras--running .zone-card-extras-dot {
+  background: var(--clim-green);
+  box-shadow: 0 0 8px var(--clim-green-dim);
+}
+.zone-card-extras-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--clim-text-dimmer);
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.zone-card-extras-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--clim-green);
+  color: #0A2418;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Running-equipment indicator on the card (matches header "N running") */
+.zone-card-running-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--clim-green);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+}
+.zone-card-running-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--clim-green);
+  box-shadow: 0 0 8px var(--clim-green-dim);
+  animation: clim-pulse 1.8s ease-in-out infinite;
+  display: inline-block;
+}
+
+/* ─── Detail screen (fullscreen takeover) ─────────────────────────────── */
 .climate-detail-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 4, 6, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: var(--clim-bg-0);
   z-index: 200;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: max(4vh, 20px) 20px;
-  animation: climate-fade-in var(--dur) var(--ease);
+  flex-direction: column;
+  animation: clim-fade-in var(--clim-dur) var(--clim-ease);
+  overflow: hidden;
 }
-@keyframes climate-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.climate-detail {
-  width: min(580px, 100%);
-  max-height: min(92vh, 900px);
-  overflow-y: auto;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  border-radius: 22px;
-  padding: 22px 24px 24px;
-  box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 40px rgba(255,184,77,0.04);
-  color: var(--text);
-  animation: climate-pop-in var(--dur) var(--ease-out);
-}
-@keyframes climate-pop-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes clim-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes clim-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.detail-header {
+.detail-topbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 16px;
+  padding: calc(14px + var(--safe-top)) 20px 14px;
+  background: var(--clim-bg-1);
+  border-bottom: 1px solid var(--clim-line);
+  flex-shrink: 0;
 }
-.detail-name {
-  font-size: 22px;
+.detail-title {
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  line-height: 1.15;
+  color: var(--clim-text);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
-.detail-status {
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: var(--text-dim);
+.detail-topbar-wrap {
+  position: relative;
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  line-height: 1.4;
+  justify-content: space-between;
 }
-.detail-status-sep { color: var(--text-dimmer); }
-.detail-running-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--accent);
-}
-.detail-hold-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11.5px;
-}
-.detail-hold-tag--sched {
-  background: rgba(88, 232, 116, 0.10);
-  color: var(--success);
-}
-.detail-hold-tag--manual {
-  background: var(--heat-dim);
-  color: var(--heat-bright);
-}
-.detail-close {
-  width: 34px; height: 34px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--dur-fast) var(--ease);
-}
-.detail-close:hover { color: var(--text); background: var(--bg-3); border-color: var(--line-strong); }
 
 .detail-body {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  animation: clim-slide-up var(--clim-dur) var(--clim-ease);
+  min-height: 0;
+  overflow-y: auto;
+}
+.detail-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
-/* Big temp readout + target dials */
-.detail-actual {
-  text-align: center;
-  padding: 12px 0 18px;
-  border-bottom: 1px solid var(--line);
-}
-.detail-actual-value {
-  font-size: 68px;
-  font-weight: 200;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--text);
-  font-feature-settings: 'tnum';
-}
-.detail-actual-unit {
-  font-size: 26px;
-  color: var(--text-dim);
-  font-weight: 300;
-  margin-left: 2px;
-}
-.detail-target-wrap {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 40px;
-  margin-top: 16px;
-  flex-wrap: wrap;
-}
-.detail-target-off {
-  color: var(--text-dim);
-  font-size: 15px;
-  font-style: italic;
-}
-.detail-dial { text-align: center; }
-.detail-dial-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-.detail-dial--heat .detail-dial-label { color: var(--heat); }
-.detail-dial--cool .detail-dial-label { color: var(--cool); }
-.detail-dial-row {
+/* Humidity chip up top */
+.detail-humidity {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  color: var(--clim-text);
+  font-size: 22px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  font-feature-settings: 'tnum';
 }
-.detail-dial-btn {
-  width: 38px; height: 38px;
+.detail-humidity svg { width: 20px; height: 20px; stroke: var(--clim-text); stroke-width: 1.8; fill: none; }
+
+/* Hero temp (huge, centered) */
+.detail-hero {
+  font-size: clamp(160px, 32vw, 200px);
+  font-weight: 200;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+  color: var(--clim-text);
+  font-feature-settings: 'tnum';
+  margin: 8px 0 0;
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--clim-dur-fast) var(--clim-ease);
+}
+.detail-hero:hover { transform: scale(1.01); }
+.detail-hero:active { transform: scale(0.99); }
+.detail-hero-hint {
+  color: var(--clim-text-dim);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+.detail-hold-slot {
+  margin-top: 28px;
+  margin-bottom: 8px;
+}
+
+/* Three bottom action icons: moon / mode / settings. Sticks to the bottom. */
+.detail-actions {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+  padding: 12px 0 calc(28px + var(--safe-bottom));
+  flex-shrink: 0;
+}
+.detail-action-btn {
+  width: 56px; height: 56px;
+  border-radius: 999px;
+  background: transparent;
+  border: none;
+  color: var(--clim-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+  position: relative;
+}
+.detail-action-btn:hover { background: var(--clim-bg-2); }
+.detail-action-btn:active { transform: scale(0.94); }
+.detail-action-btn svg { width: 32px; height: 32px; stroke-width: 1.8; fill: none; stroke: currentColor; }
+.detail-action-btn.active { color: var(--clim-cool-1); }
+.detail-action-btn.active.action-heat { color: var(--clim-heat-1); }
+.detail-action-btn-label {
+  position: absolute;
+  bottom: -14px;
+  font-size: 10px;
+  color: var(--clim-text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ─── Setpoint picker (scroll wheel) ──────────────────────────────────── */
+.setpoint-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--clim-bg-0);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  animation: clim-fade-in var(--clim-dur) var(--clim-ease);
+}
+.setpoint-picker-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(14px + var(--safe-top)) 20px 14px;
+}
+.setpoint-picker-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  padding: 40px 20px;
+  animation: clim-slide-up var(--clim-dur) var(--clim-ease);
+}
+
+.setpoint-wheel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  min-width: 220px;
+  position: relative;
+}
+.setpoint-wheel-num {
+  font-size: 36px;
+  font-weight: 300;
+  color: var(--clim-text);
+  letter-spacing: -0.02em;
+  font-feature-settings: 'tnum';
+  line-height: 1;
+  user-select: none;
+  cursor: pointer;
+  transition: opacity var(--clim-dur-fast) var(--clim-ease);
+}
+.setpoint-wheel-num--far { opacity: 0.28; font-size: 28px; }
+.setpoint-wheel-num--near { opacity: 0.55; font-size: 32px; }
+.setpoint-wheel-num:hover:not(.setpoint-wheel-num--selected) { opacity: 0.85; }
+
+/* The selected value in the squircle-blue tile */
+.setpoint-wheel-selected {
+  width: 220px;
+  height: 220px;
+  /* Continuous-curvature squircle via border-radius percentage */
+  border-radius: 24%;
+  background: linear-gradient(135deg, var(--clim-cool-1) 0%, var(--clim-cool-2) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--clim-text);
+  font-size: 110px;
+  font-weight: 200;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-feature-settings: 'tnum';
+  box-shadow:
+    0 12px 40px -8px var(--clim-cool-glow),
+    0 0 60px -12px var(--clim-cool-glow),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: transform var(--clim-dur-fast) var(--clim-ease);
+  user-select: none;
+}
+.setpoint-wheel-selected--heat {
+  background: linear-gradient(135deg, var(--clim-heat-1) 0%, var(--clim-heat-2) 100%);
+  box-shadow:
+    0 12px 40px -8px var(--clim-heat-glow),
+    0 0 60px -12px var(--clim-heat-glow),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.setpoint-wheel-selected:active { transform: scale(0.98); }
+.setpoint-wheel-selected--pending {
+  animation: clim-selected-pulse 1s ease-in-out infinite;
+}
+@keyframes clim-selected-pulse {
+  0%, 100% { box-shadow: 0 12px 40px -8px var(--clim-cool-glow), 0 0 60px -12px var(--clim-cool-glow), inset 0 1px 0 rgba(255,255,255,0.15); }
+  50% { box-shadow: 0 12px 40px -6px var(--clim-cool-glow), 0 0 80px -8px var(--clim-cool-glow), inset 0 1px 0 rgba(255,255,255,0.2); }
+}
+
+/* Floating +/− buttons to the right */
+.setpoint-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+.setpoint-btn {
+  width: 60px; height: 60px;
   border-radius: 50%;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  color: var(--text);
-  font-size: 18px;
+  border: 2px solid var(--clim-cool-1);
+  background: transparent;
+  color: var(--clim-cool-1);
+  font-size: 28px;
+  font-weight: 300;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: all var(--dur-fast) var(--ease);
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+  padding: 0;
 }
-.detail-dial-btn:hover { background: var(--bg-4); border-color: var(--line-strong); }
-.detail-dial-btn:active { transform: scale(0.9); }
-.detail-dial-value {
-  font-size: 30px;
-  font-weight: 300;
-  min-width: 62px;
-  text-align: center;
-  letter-spacing: -0.02em;
-  font-feature-settings: 'tnum';
+.setpoint-btn:hover {
+  background: var(--clim-cool-dim);
+  transform: scale(1.05);
 }
+.setpoint-btn:active { transform: scale(0.92); }
+.setpoint-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+.setpoint-btn--heat {
+  border-color: var(--clim-heat-1);
+  color: var(--clim-heat-1);
+}
+.setpoint-btn--heat:hover { background: var(--clim-heat-dim); }
 
-/* Rows: mode / fan / comfort / actions / sensors */
-.detail-row {
-  display: grid;
-  grid-template-columns: 78px 1fr;
-  gap: 8px 16px;
-  align-items: flex-start;
+.setpoint-picker-footer {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 20px calc(20px + var(--safe-bottom));
 }
-.detail-label {
+.setpoint-picker-footer-btn {
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: none;
+  background: var(--clim-bg-2);
+  color: var(--clim-text);
+  font: 500 14px/1 var(--font-body);
+  cursor: pointer;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+}
+.setpoint-picker-footer-btn:hover { background: var(--clim-bg-3); }
+.setpoint-picker-footer-btn--primary {
+  background: var(--clim-cool-1);
+  color: #0A1830;
+  font-weight: 600;
+}
+.setpoint-picker-footer-btn--primary:hover { background: var(--clim-cool-2); color: #FFFFFF; }
+.setpoint-picker-footer-btn--primary.footer-btn-heat {
+  background: var(--clim-heat-1);
+  color: #241300;
+}
+.setpoint-picker-footer-btn--primary.footer-btn-heat:hover { background: var(--clim-heat-2); }
+
+/* Which dial is being edited (auto mode: heat vs cool) */
+.setpoint-picker-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--clim-bg-2);
+  border-radius: 999px;
+  margin: 0 auto;
+  width: fit-content;
+}
+.setpoint-picker-tab {
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--clim-text-mid);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
+}
+.setpoint-picker-tab.active {
+  background: var(--clim-bg-3);
+  color: var(--clim-text);
+}
+.setpoint-picker-tab.active.tab-heat { color: var(--clim-heat-1); }
+.setpoint-picker-tab.active.tab-cool { color: var(--clim-cool-1); }
+
+/* ─── Settings sheet (system mode, fan, comfort, sensors) ────────────── */
+.settings-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 250;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: clim-fade-in var(--clim-dur) var(--clim-ease);
+}
+.settings-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--clim-bg-1);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  padding: 20px 22px calc(24px + var(--safe-bottom));
+  animation: clim-slide-up var(--clim-dur) var(--clim-ease-out);
+}
+.settings-sheet-handle {
+  width: 38px; height: 4px;
+  background: var(--clim-line-strong);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+.settings-sheet-close {
+  position: absolute;
+  top: 20px; right: 22px;
+  width: 32px; height: 32px;
+  border-radius: 999px;
+  background: var(--clim-bg-2);
+  border: none;
+  color: var(--clim-text-mid);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.settings-sheet-close:hover { color: var(--clim-text); background: var(--clim-bg-3); }
+
+.settings-sheet-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--clim-text);
+  margin: 4px 0 4px;
+  text-align: center;
+}
+.settings-sheet-sub {
+  color: var(--clim-text-dim);
+  font-size: 12.5px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.settings-sheet-section {
+  margin-bottom: 18px;
+}
+.settings-sheet-section-label {
   font-size: 10.5px;
-  color: var(--text-dim);
+  color: var(--clim-text-dim);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 600;
-  padding-top: 8px;
+  margin-bottom: 10px;
 }
-.detail-pills {
+.settings-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.detail-pill {
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  color: var(--text-mid);
-  padding: 7px 12px;
+.settings-pill {
+  background: var(--clim-bg-2);
+  border: 1px solid transparent;
+  color: var(--clim-text-mid);
+  padding: 9px 14px;
   border-radius: 999px;
   cursor: pointer;
-  font: 500 12.5px/1 var(--font-body);
-  transition: all var(--dur-fast) var(--ease);
+  font: 500 13px/1 var(--font-body);
+  transition: all var(--clim-dur-fast) var(--clim-ease);
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   text-transform: capitalize;
+  font-family: inherit;
 }
-.detail-pill:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--text);
-  border-color: var(--line-strong);
+.settings-pill:hover:not(:disabled) {
+  background: var(--clim-bg-3);
+  color: var(--clim-text);
 }
-.detail-pill:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.settings-pill:disabled { opacity: 0.35; cursor: not-allowed; }
+.settings-pill.active {
+  background: var(--clim-green-dim);
+  border-color: rgba(46, 204, 143, 0.4);
+  color: var(--clim-green-bright);
 }
-.detail-pill--active {
-  background: rgba(255, 184, 77, 0.14);
-  border-color: var(--accent-dim);
-  color: var(--accent-bright);
-}
-.detail-pill-glyph { font-size: 13px; opacity: 0.95; }
-.detail-pill-sub {
-  color: var(--text-dim);
-  font-size: 10.5px;
-  margin-left: 2px;
+.settings-pill.active.pill-cool { color: var(--clim-cool-1); background: var(--clim-cool-dim); border-color: rgba(74,144,242,0.4); }
+.settings-pill.active.pill-heat { color: var(--clim-heat-1); background: var(--clim-heat-dim); border-color: rgba(245,166,35,0.4); }
+.settings-pill-sub {
+  color: var(--clim-text-dim);
+  font-size: 11px;
+  margin-left: 3px;
   font-weight: 400;
   font-feature-settings: 'tnum';
 }
 
-/* Sensors */
-.detail-sensors {
+.settings-sensors {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
 }
-.detail-sensor {
-  padding: 8px 10px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+.settings-sensor {
+  padding: 10px 14px;
+  background: var(--clim-bg-2);
+  border: 1px solid var(--clim-line);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  font-size: 12.5px;
+  gap: 8px;
+  font-size: 13px;
 }
-.detail-sensor--in-use {
-  border-color: rgba(88, 232, 116, 0.25);
-}
-.detail-sensor-name {
-  color: var(--text-mid);
+.settings-sensor--in-use { border-color: rgba(46, 204, 143, 0.3); }
+.settings-sensor-name {
+  color: var(--clim-text-mid);
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.detail-sensor-occ {
-  color: var(--success);
+.settings-sensor-occ {
+  color: var(--clim-green);
   font-size: 9px;
 }
-.detail-sensor-temp {
-  color: var(--text);
+.settings-sensor-temp {
+  color: var(--clim-text);
   font-weight: 500;
   font-feature-settings: 'tnum';
 }
 
-.detail-pending {
-  margin-top: 14px;
-  padding: 8px;
-  text-align: center;
-  color: var(--accent-bright);
-  font-size: 12.5px;
+.settings-action-btn {
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--clim-bg-2);
+  border: 1px solid var(--clim-line-strong);
+  border-radius: 14px;
+  color: var(--clim-text);
+  font: 500 14px/1 var(--font-body);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all var(--clim-dur-fast) var(--clim-ease);
 }
+.settings-action-btn:hover:not(:disabled) { background: var(--clim-bg-3); }
+.settings-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.settings-action-btn svg { width: 16px; height: 16px; stroke-width: 2; }
 
-/* ─── Toasts (bottom-right, over everything) ─── */
+/* ─── Toasts ─────────────────────────────────────────────────────────── */
 .climate-toasts {
   position: fixed;
   bottom: calc(20px + var(--safe-bottom));
-  right: calc(20px + var(--safe-right));
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 300;
+  z-index: 400;
   pointer-events: none;
+  align-items: center;
+  width: max-content;
+  max-width: 90vw;
 }
 .climate-toast {
-  background: rgba(15, 15, 19, 0.95);
-  border: 1px solid var(--line-strong);
-  padding: 10px 14px;
-  border-radius: 12px;
-  color: var(--text);
-  font-size: 13px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-  max-width: 320px;
-  animation: climate-toast-in var(--dur) var(--ease);
+  background: var(--clim-bg-2);
+  border: 1px solid var(--clim-line-strong);
+  padding: 12px 18px;
+  border-radius: 999px;
+  color: var(--clim-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  animation: clim-toast-in var(--clim-dur) var(--clim-ease);
   pointer-events: auto;
+  max-width: 340px;
+  text-align: center;
 }
-@keyframes climate-toast-in {
-  from { transform: translateY(10px); opacity: 0; }
+@keyframes clim-toast-in {
+  from { transform: translateY(12px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 .climate-toast--err {
   border-color: rgba(255, 106, 92, 0.5);
-  color: #ffb3aa;
+  color: #FFB3AA;
 }
 
-/* ─── Hub-tile flourish for Climate ─── */
+/* ─── Hub-tile flourish (Berg Castle Panel landing page) ─────────────── */
 .hub-climate .hub-tile-icon {
-  color: var(--heat-bright);
-  background: var(--heat-dim);
+  color: var(--clim-cool-1);
+  background: var(--clim-cool-dim);
 }
 .hub-badge-climate {
-  background: var(--heat) !important;
-  color: #2a0f08 !important;
+  background: var(--clim-green) !important;
+  color: #082014 !important;
 }
 
-/* ─── Mobile tweaks ─── */
-@media (max-width: 640px) {
-  .climate-page { padding: 0 14px 60px; }
-  .climate-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-  .climate-bar { padding: 8px; }
-  .climate-bar-btn { padding: 10px 14px; font-size: 13.5px; min-width: 88px; }
-  .climate-bar-group--right { margin-left: 0; width: 100%; }
-  .climate-bar-btn--secondary { flex: 1; justify-content: center; }
-  .detail-row { grid-template-columns: 1fr; gap: 4px; }
-  .detail-label { padding-top: 0; }
-  .detail-actual-value { font-size: 56px; }
-  .detail-target-wrap { gap: 20px; }
-  .detail-dial-value { font-size: 26px; min-width: 54px; }
+/* ─── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .climate-page { padding: 12px 12px 40px; }
+  .zone-card { padding: 12px 18px 14px; }
+  .zone-card-temp { font-size: 52px; margin: 0 0 6px; }
+  .detail-hero { font-size: clamp(140px, 40vw, 180px); }
+  .setpoint-picker-body { flex-direction: column; gap: 24px; }
+  /* Mobile: +/− flip to a horizontal row. Reverse the source order so
+   * − (button #2) lands on the LEFT and + (button #1) lands on the RIGHT.
+   * (Design review 2026-08-03 flagged unexpected + on left.) */
+  .setpoint-controls { flex-direction: row-reverse; gap: 24px; }
+  .setpoint-wheel-selected { width: 200px; height: 200px; font-size: 100px; }
 }
