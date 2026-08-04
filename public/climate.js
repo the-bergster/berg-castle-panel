@@ -246,11 +246,17 @@ const Climate = (() => {
       S.view = 'list';
       S.detailIndex = null;
       S.pickerIndex = null;
+      // Clean up any lingering overlays from previous views
+      document.getElementById('setpoint-picker-backdrop')?.remove();
+      document.getElementById('climate-detail-backdrop')?.remove();
       await renderList();
     } else if (parts.length === 1) {
       S.view = 'detail';
       S.detailIndex = parseInt(parts[0], 10);
       S.pickerIndex = null;
+      // Coming back from picker: nuke the picker overlay so the back button
+      // actually reveals the detail view underneath.
+      document.getElementById('setpoint-picker-backdrop')?.remove();
       await renderList();  // paint list as background
       renderDetail();
     } else if (parts.length === 3 && parts[1] === 'set') {
@@ -458,9 +464,11 @@ const Climate = (() => {
       const pillClass = holdIsSched
         ? 'zone-hold-pill--schedule'
         : (t.hvacMode === 'heat' ? 'zone-hold-pill--heat' : '');
+      // Label-only variant (schedule pill has no value + no close btn): center text.
+      const labelOnly = !val && holdIsSched;
       holdHTML = `
         <div class="zone-card-hold-slot">
-          <div class="zone-hold-pill ${pillClass}">
+          <div class="zone-hold-pill ${pillClass}${labelOnly ? ' zone-hold-pill--label-only' : ''}">
             ${val ? `<span class="zone-hold-pill-value">${val}</span><span class="zone-hold-pill-sep"></span>` : ''}
             <span class="zone-hold-pill-label">${esc(label)}</span>
             ${holdIsSched ? '' : '<span class="zone-hold-pill-close" role="button" tabindex="0" aria-label="Resume schedule">' + ICONS.close + '</span>'}
@@ -554,9 +562,10 @@ const Climate = (() => {
       const pillClass = holdIsSched
         ? 'zone-hold-pill--schedule'
         : (t.hvacMode === 'heat' ? 'zone-hold-pill--heat' : '');
+      const labelOnly = !val && holdIsSched;
       holdHTML = `
         <div class="detail-hold-slot">
-          <div class="zone-hold-pill ${pillClass}">
+          <div class="zone-hold-pill ${pillClass}${labelOnly ? ' zone-hold-pill--label-only' : ''}">
             ${val ? `<span class="zone-hold-pill-value">${val}</span><span class="zone-hold-pill-sep"></span>` : ''}
             <span class="zone-hold-pill-label">${esc(label)}</span>
             ${holdIsSched ? '' : '<span class="zone-hold-pill-close" role="button" tabindex="0" id="detail-resume-btn" aria-label="Resume schedule">' + ICONS.close + '</span>'}
@@ -753,6 +762,66 @@ const Climate = (() => {
         wheelDebounce = setTimeout(() => { wheelDebounce = null; }, 80);
         bumpPicker(e.deltaY > 0 ? -1 : 1);
       }, { passive: false });
+
+      // Touch/pointer swipe: drag up = warmer, drag down = cooler.
+      // Each ~28px of vertical drag = 1° step, so a comfortable thumb-flick
+      // moves you a few degrees and a slow drag inches you one at a time.
+      const STEP_PX = 28;
+      let dragActive = false;
+      let dragStartY = 0;
+      let dragStartVal = null;
+      let dragLastVal = null;
+
+      const onDragStart = (clientY) => {
+        dragActive = true;
+        dragStartY = clientY;
+        dragStartVal = S.pickerValue ?? val;
+        dragLastVal = dragStartVal;
+      };
+      const onDragMove = (clientY, e) => {
+        if (!dragActive) return;
+        // Up-swipe (negative deltaY in DOM coords) should increase the value,
+        // matching the visual: numbers above the tile are warmer.
+        const dy = dragStartY - clientY;
+        const steps = Math.trunc(dy / STEP_PX);
+        const t2 = findThermostat(S.pickerIndex);
+        if (!t2) return;
+        const isHeatMode = S.pickerMode === 'heat';
+        const minV = isHeatMode ? (t2.settings?.heatMinTemp ?? 45) : (t2.settings?.coolMinTemp ?? 55);
+        const maxV = isHeatMode ? (t2.settings?.heatMaxTemp ?? 79) : (t2.settings?.coolMaxTemp ?? 92);
+        const target = Math.min(maxV, Math.max(minV, dragStartVal + steps));
+        if (target !== dragLastVal) {
+          dragLastVal = target;
+          S.pickerValue = target;
+          paintPicker();
+        }
+        if (e && e.cancelable) e.preventDefault();
+      };
+      const onDragEnd = () => { dragActive = false; };
+
+      wheelEl.addEventListener('touchstart', (e) => {
+        if (!e.touches[0]) return;
+        onDragStart(e.touches[0].clientY);
+      }, { passive: true });
+      wheelEl.addEventListener('touchmove', (e) => {
+        if (!e.touches[0]) return;
+        onDragMove(e.touches[0].clientY, e);
+      }, { passive: false });
+      wheelEl.addEventListener('touchend', onDragEnd, { passive: true });
+      wheelEl.addEventListener('touchcancel', onDragEnd, { passive: true });
+
+      // Mouse drag for desktop testing (in addition to the wheel event above)
+      wheelEl.addEventListener('mousedown', (e) => {
+        onDragStart(e.clientY);
+        const mm = (ev) => onDragMove(ev.clientY, null);
+        const mu = () => {
+          onDragEnd();
+          window.removeEventListener('mousemove', mm);
+          window.removeEventListener('mouseup', mu);
+        };
+        window.addEventListener('mousemove', mm);
+        window.addEventListener('mouseup', mu);
+      });
     }
   }
 

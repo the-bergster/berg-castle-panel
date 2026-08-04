@@ -361,6 +361,12 @@ body:has(.climate-page) {
   border-color: var(--clim-green);
   color: var(--clim-text);
 }
+/* Label-only variant (schedule pill with no value + no close button):
+ * symmetric padding so text sits centered inside the stadium. */
+.zone-hold-pill--label-only {
+  padding: 8px 18px;
+  justify-content: center;
+}
 .zone-hold-pill-value {
   font-weight: 600;
   color: var(--clim-cool-1);
