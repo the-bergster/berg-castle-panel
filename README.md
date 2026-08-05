@@ -250,9 +250,22 @@ nohup node server.js > /tmp/berg-panel.log 2>&1 &
 **Tunnel:** `berg-castle` (uuid `979bab30-df98-4e08-915c-29f7b541bf6c`)
 **Public URL:** `home.bergcastle.com` (subdomain of the Cloudflare-registered `bergcastle.com`)
 **cloudflared service:** launchd user agent at `~/Library/LaunchAgents/com.cloudflare.cloudflared.plist`, running as `/opt/homebrew/bin/cloudflared --config /Users/jony/.cloudflared/config.yml tunnel run berg-castle`
-**Access policy:** email `me@simonberg.ai`, 1-month sliding session
+**Access policy:** "Simon only" policy on the `Berg Castle` app in Cloudflare Zero Trust. Allow-list currently: `me@simonberg.ai`, `dovile.berg@gmail.com`. 1-month sliding session.
+**Identity providers enabled on this app:** Cloudflare (SSO for account members — used by Simon) + One-time PIN (email-code login — used by anyone else on the allow-list, e.g. Dovilė). Without OTP enabled, non-Cloudflare-account emails hit the "sign-in is restricted to members of the account" wall.
 **Tunnel config:** `~/.cloudflared/config.yml`
 **Tunnel credentials:** `~/.cloudflared/979bab30-df98-4e08-915c-29f7b541bf6c.json` (secret — keep off github)
+**Cloudflare API token for Access admin:** `~/.openclaw/workspace/.secrets/cloudflare/berg-castle.env` (account-scoped, edit rights on Access apps + IdPs). Use this to add/remove users via API instead of hunting through the dashboard.
+
+### Adding a new user (the fast way)
+
+```bash
+set -a && source ~/.openclaw/workspace/.secrets/cloudflare/berg-castle.env && set +a
+APP_ID="59ec8bc0-466b-4ee9-9671-78f8c4395e41"
+POLICY_ID="034b8d96-09ed-4143-8d9d-7acce9fb6be1"
+# Fetch, edit the include list to add another {"email": {"email": "..."}} entry,
+# then PUT it back to /accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies/$POLICY_ID
+```
+Once added, the new user hits `https://home.bergcastle.com`, picks the email/OTP login (or the email field on the current UI), gets a 6-digit PIN in their inbox, punches it in. Then Safari share → Add to Home Screen for the PWA install.
 
 If the tunnel dies:
 ```bash
