@@ -192,6 +192,9 @@ function route() {
     Music.teardown();
     Climate.render(app, hash);
     return;
+  } else if (hash === '/cameras') {
+    Music.teardown();
+    renderCameras();
   } else if (hash.startsWith('/room/')) {
     Music.teardown();
     const id = parseInt(hash.split('/')[2], 10);
@@ -281,6 +284,19 @@ function renderHub() {
         <div class="hub-tile-body">
           <div class="hub-tile-title">Climate</div>
           <div class="hub-tile-sub" id="hub-climate-sub">Loading zones…</div>
+        </div>
+      </button>
+
+      <button class="hub-tile hub-cameras" data-nav="/cameras">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Cameras</div>
+          <div class="hub-tile-sub">5 feeds · coming soon</div>
         </div>
       </button>
     </div>
@@ -717,6 +733,62 @@ async function sendIntercomBroadcast() {
   } finally {
     document.getElementById('intercom-send').disabled = false;
   }
+}
+
+// ---------- Rendering: Cameras ----------
+//
+// Placeholder shell for the 5 camera feeds we'll wire up once the cameras are
+// installed. Each tile is a static card with a stubbed label + "No feed yet"
+// state. When the feeds land, this is where the <video> / MJPEG / HLS embeds
+// go; for now, only the shell and route so the tile is live in the app.
+
+const CAMERA_SLOTS = [
+  { id: 1, label: 'Camera 1' },
+  { id: 2, label: 'Camera 2' },
+  { id: 3, label: 'Camera 3' },
+  { id: 4, label: 'Camera 4' },
+  { id: 5, label: 'Camera 5' },
+];
+
+function renderCameras() {
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="topbar-back" data-back>
+        <span class="chev">‹</span>
+      </button>
+      <div>
+        <div class="topbar-title">Cameras</div>
+        <span class="topbar-sub">Live feeds</span>
+      </div>
+      <div class="conn-badge" id="conn-badge">
+        <span class="dot"></span>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+
+    <div class="cameras-grid fade-in">
+      ${CAMERA_SLOTS.map((c) => `
+        <div class="camera-tile" data-camera="${c.id}">
+          <div class="camera-frame">
+            <div class="camera-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 7l-7 5 7 5V7z"/>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+              </svg>
+              <div class="camera-placeholder-label">No feed yet</div>
+            </div>
+          </div>
+          <div class="camera-tile-foot">
+            <div class="camera-tile-title">${c.label}</div>
+            <div class="camera-tile-status">Pending install</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  app.querySelector('[data-back]').addEventListener('click', () => navigate('/'));
+  connectWS();
 }
 
 // ---------- Rendering: Lights ----------
