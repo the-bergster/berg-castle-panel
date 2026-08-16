@@ -146,6 +146,23 @@ function setConn(status) {
   if (!badge) return;
   badge.classList.toggle('live', status === 'live');
   label.textContent = status === 'live' ? 'Live' : status === 'connecting' ? 'Connecting' : 'Offline';
+  // Tap the badge to force a fresh reload (no hard-refresh button in a PWA).
+  if (!badge.dataset.reloadWired) {
+    badge.dataset.reloadWired = '1';
+    badge.classList.add('tappable');
+    if (!badge.querySelector('.conn-refresh')) {
+      const ref = document.createElement('span');
+      ref.className = 'conn-refresh';
+      ref.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+      badge.appendChild(ref);
+    }
+    badge.addEventListener('click', () => {
+      badge.classList.add('reloading');
+      // Cache-bust so iOS WKWebView fetches fresh assets, preserving route.
+      const base = location.pathname + '?r=' + Date.now();
+      location.replace(base + location.hash);
+    });
+  }
 }
 
 // ---------- Actions ----------
@@ -213,7 +230,6 @@ function route() {
   // (Voice is intentionally NOT torn down here — the dock is persistent and the
   //  session should survive navigation so you can keep talking anywhere.)
   if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
-  document.body.classList.toggle('on-hub', hash === '/' || hash === '');
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();

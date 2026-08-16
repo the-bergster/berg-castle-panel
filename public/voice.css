@@ -9,16 +9,9 @@
   --dock-h: calc(var(--dock-scrim-top) + var(--dock-pill) + var(--dock-gap-bottom) + var(--safe-bottom));
 }
 
-/* Give every page room so the dock never covers content. */
-body { padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 8px); }
-/* The hub owns its own height (100svh) and handles safe-area insets itself
-   (header pads for the notch, dock pads for the home indicator). So the body's
-   own safe-area padding must be zeroed here, otherwise it double-applies — which
-   pushed content down (top gap) AND clipped the bottom row under the dock. */
-body.on-hub {
-  padding: 0;
-  overflow: hidden;
-}
+/* Give every page room so the dock never covers content. The hub uses the same
+   rule — no special-casing — so the fixed dock anchors identically everywhere. */
+body { padding-bottom: calc(var(--dock-h) + 8px); }
 
 #voice-dock {
   position: fixed;

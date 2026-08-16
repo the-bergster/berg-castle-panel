@@ -129,6 +129,17 @@ a { color: inherit; text-decoration: none; }
 }
 .conn-badge.live .dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
 .conn-badge.live { color: var(--text-mid); }
+.conn-badge.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.conn-badge.tappable:active { background: var(--bg-3); }
+.conn-refresh {
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: 2px; padding-left: 6px;
+  border-left: 1px solid var(--line);
+  color: var(--text-mid);
+}
+.conn-refresh svg { width: 13px; height: 13px; display: block; }
+.conn-badge.reloading .conn-refresh { animation: conn-spin 0.6s linear infinite; }
+@keyframes conn-spin { to { transform: rotate(360deg); } }
 
 /* ---------- Home view ---------- */
 .home-summary {
@@ -459,25 +470,30 @@ a { color: inherit; text-decoration: none; }
 .room-scene:active { transform: scale(0.94); }
 
 /* ---------- Hub (home landing) ---------- */
-/* ---------- Hub: fills the viewport, no scroll ---------- */
+/* The hub uses the SAME layout model as every other page: normal document flow
+   inside the body (which pads the bottom for the fixed dock). It just happens to
+   fit in one screen. This keeps the fixed voice dock anchored identically on the
+   hub as everywhere else — the previous overflow:hidden + 100svh + zeroed body
+   padding special-case is what made the pill sit higher on the home page. */
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Real usable height = viewport minus the dock (which is fixed at the very
-     bottom and includes its own safe-bottom padding). Using min-height keeps
-     the column from ever exceeding the screen -> no scroll, tiles distribute
-     into whatever's left. */
-  height: 100dvh;
-  height: 100svh;
-  padding-bottom: calc(var(--dock-pill) + var(--dock-gap-bottom) + var(--safe-bottom) + var(--dock-scrim-top) + 20px);
-  overflow: hidden;
+  /* Fill the space the body gives us so the bento stretches to the dock and
+     there's no dead gap at the bottom. body already subtracts safe-top (padding)
+     and reserves the dock via padding-bottom, so 100% of the body content box
+     is exactly the usable area. */
+  /* body pads top by safe-top and bottom by (dock-h + 8) — see voice.css. So the
+     body content box, which hub-root fills exactly, is dvh minus those. */
+  height: calc(100dvh - var(--safe-top) - var(--dock-h) - 8px);
+  min-height: 0;
 }
 
+/* body already pads for --safe-top, so header just adds its own breathing room. */
 .hub-head {
   flex: 0 0 auto;
-  padding: calc(6px + var(--safe-top)) 20px 2px;
+  padding: 10px 20px 2px;
 }
-@media (min-width: 560px) { .hub-head { padding: calc(14px + var(--safe-top)) 24px 6px; } }
+@media (min-width: 560px) { .hub-head { padding: 16px 24px 6px; } }
 .hub-head-row {
   display: flex; align-items: center; justify-content: space-between;
 }
