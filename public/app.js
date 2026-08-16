@@ -191,6 +191,7 @@ function route() {
   currentRoute = hash;
   // Any route change: tear down modules we might be leaving.
   if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
+  if (hash !== '/voice' && window.Voice && Voice.isActive()) Voice.teardown();
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();
@@ -213,6 +214,9 @@ function route() {
   } else if (hash === '/fireplaces') {
     Music.teardown();
     renderFireplaces();
+  } else if (hash === '/voice') {
+    Music.teardown();
+    renderVoice();
   } else if (hash.startsWith('/room/')) {
     Music.teardown();
     const id = parseInt(hash.split('/')[2], 10);
@@ -303,6 +307,20 @@ function renderHub() {
         <div class="hub-tile-body">
           <div class="hub-tile-title">Climate</div>
           <div class="hub-tile-sub" id="hub-climate-sub">Loading zones…</div>
+        </div>
+      </button>
+
+      <button class="hub-tile hub-voice" data-nav="/voice">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <path d="M12 19v3M8 22h8"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Voice</div>
+          <div class="hub-tile-sub">Talk to the house</div>
         </div>
       </button>
 

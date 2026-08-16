@@ -23,6 +23,7 @@ const { SonosSystem } = require('./sonos');
 const sonosApi = require('./sonos/api');
 const intercom = require('./intercom');
 const climate = require('./climate');
+const voice = require('./voice');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -84,6 +85,66 @@ function broadcast(msg) {
   const frame = wsFrame(JSON.stringify(msg));
   for (const c of clients) {
     try { c.write(frame); } catch (_) { clients.delete(c); }
+  }
+}
+
+// ---- Voice tool executor ----
+// Routes a tool the Realtime model asked for to the same Lutron paths the UI
+// uses. Returns a small JSON result the model reads back to the user.
+async function runVoiceTool(name, args) {
+  switch (name) {
+    case 'set_output': {
+      const { id, level } = args;
+      await lutron.setOutput(id, level, 1);
+      return { ok: true, id, level };
+    }
+    case 'set_room': {
+      const room = ROOMS_DATA.rooms.find(r => r.id === args.room_id);
+      if (!room) return { ok: false, error: 'unknown room' };
+      await lutron.setMany(room.outputs.map(o => ({ id: o.id, level: args.level, fade: 1 })));
+      return { ok: true, room: room.name, level: args.level, count: room.outputs.length };
+    }
+    case 'set_zone': {
+      const zone = ROOMS_DATA.zones.find(z => z.name.toLowerCase() === String(args.zone || '').toLowerCase());
+      if (!zone) return { ok: false, error: 'unknown zone' };
+      const cmds = [];
+      for (const r of zone.rooms) for (const o of r.outputs) cmds.push({ id: o.id, level: args.level, fade: 2 });
+      await lutron.setMany(cmds);
+      return { ok: true, zone: zone.name, level: args.level, count: cmds.length };
+    }
+    case 'set_fireplace': {
+      const { id, on } = args;
+      await lutron.setOutput(id, on ? 100 : 0, 0);
+      return { ok: true, id, on: !!on };
+    }
+    case 'all_off': {
+      await lutron.setMany(ROOMS_DATA.all_output_ids.map(id => ({ id, level: 0, fade: 2 })));
+      return { ok: true, count: ROOMS_DATA.all_output_ids.length };
+    }
+    case 'fire_scene': {
+      await lutron.pressPicoButton(args.pico_id, args.button);
+      return { ok: true, pico_id: args.pico_id, button: args.button };
+    }
+    case 'fire_synthetic_scene': {
+      const scene = findSynthetic(args.id);
+      if (!scene) return { ok: false, error: 'unknown scene' };
+      await lutron.setMany(scene.outputs.map(o => ({ id: o.id, level: o.level, fade: scene.fade || 1 })));
+      return { ok: true, scene: scene.label, count: scene.outputs.length };
+    }
+    case 'get_state': {
+      const state = lutron.getState();
+      // Summarise: which named outputs are on + their level.
+      const on = [];
+      for (const r of ROOMS_DATA.rooms) {
+        for (const o of r.outputs) {
+          const lvl = state[o.id] || 0;
+          if (lvl > 0) on.push({ room: r.name, name: o.name, level: lvl });
+        }
+      }
+      return { ok: true, on_count: on.length, on };
+    }
+    default:
+      return { ok: false, error: `unknown tool: ${name}` };
   }
 }
 
@@ -310,6 +371,47 @@ const server = http.createServer(async (req, res) => {
     lutron.setMany(ROOMS_DATA.all_output_ids.map(id => ({ id, level: 0, fade: 2 })));
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ count: ROOMS_DATA.all_output_ids.length }));
+    return;
+  }
+
+  // ---- Voice agent (OpenAI Realtime) ----
+  if (req.method === 'GET' && pathname === '/voice.js') {
+    serveStatic(res, 'voice.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/voice.css') {
+    serveStatic(res, 'voice.css'); return;
+  }
+  // Mint an ephemeral client secret (browser never sees the real key).
+  if (req.method === 'GET' && pathname === '/api/voice/session') {
+    const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC);
+    voice.mintClientSecret(cfg)
+      .then((out) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ value: out.value, expires_at: out.expires_at, model: voice.MODEL }));
+      })
+      .catch((e) => {
+        console.error('[voice] mint failed:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      });
+    return;
+  }
+  // Execute a tool call the model requested (fired by the browser).
+  if (req.method === 'POST' && pathname === '/api/voice/tool') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { name, args } = JSON.parse(body || '{}');
+        const result = await runVoiceTool(name, args || {});
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[voice:tool]', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
   if (req.method === 'POST' && pathname === '/api/zone-set') {
