@@ -1351,11 +1351,49 @@ function escapeHtml(s) {
 
 // ---------- Boot ----------
 
+// iOS reports safe-area insets (and the final dynamic-viewport height) a beat
+// AFTER first paint. The hub's height depends on those, so on the very first
+// load it can compute against stale (0) insets — which is exactly why the pill
+// sat too high until you navigated away and back (that forced a re-render).
+// Re-render the current route once the viewport settles, and whenever it changes.
+let _settleReroute;
+let _lastViewportH = 0;
+function rerenderOnSettle() {
+  clearTimeout(_settleReroute);
+  _settleReroute = setTimeout(() => {
+    // Only re-render if the usable viewport height actually changed (i.e. iOS
+    // just resolved the real insets / dvh). Avoids needless hub re-animation.
+    const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    if (Math.abs(h - _lastViewportH) < 2) return;
+    _lastViewportH = h;
+    const hash = location.hash.slice(1) || '/';
+    // The hub is the only route whose layout depends on the settled height.
+    if (hash === '/' || hash === '') {
+      try { route(); } catch (_) {}
+    }
+  }, 60);
+}
+function wireViewportSettle() {
+  // A few nudges right after boot to catch the late inset/viewport resolution.
+  requestAnimationFrame(rerenderOnSettle);
+  window.addEventListener('load', rerenderOnSettle);
+  setTimeout(rerenderOnSettle, 250);
+  setTimeout(rerenderOnSettle, 600);
+  window.addEventListener('resize', rerenderOnSettle);
+  window.addEventListener('orientationchange', rerenderOnSettle);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', rerenderOnSettle);
+  }
+}
+
 async function boot() {
+  // Mount the persistent dock BEFORE the first render so its layout is settled
+  // when the hub paints (avoids the first-load pill-position glitch on iOS).
+  if (window.mountVoiceDock) mountVoiceDock();
   await Promise.all([fetchRooms(), fetchScenes(), fetchState()]);
   route();
   connectWS();
-  if (window.mountVoiceDock) mountVoiceDock();
+  wireViewportSettle();
 }
 
 window.setConn = setConn;
