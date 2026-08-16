@@ -16,10 +16,11 @@ body { padding-bottom: calc(var(--dock-h) + 8px); }
 #voice-dock {
   position: fixed;
   left: 0; right: 0;
-  /* Anchor to the real screen bottom on EVERY page, independent of page scroll
-     or the hub's overflow:hidden. env() reads the device home-indicator inset
-     directly so the pill sits in the exact same spot everywhere. */
-  bottom: 0;
+  /* Anchored via JS (--dock-bottom, from visualViewport) so it always sits at
+     the real visible bottom on iOS — fixed;bottom:0 alone anchors to the layout
+     viewport, which can be taller than what's visible, floating the pill up.
+     Fallback 0 for first paint / non-iOS. */
+  bottom: var(--dock-bottom, 0px);
   z-index: 60;
   display: flex;
   flex-direction: column;

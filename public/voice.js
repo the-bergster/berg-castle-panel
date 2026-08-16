@@ -145,6 +145,38 @@ function mountVoiceDock() {
 
   btn.addEventListener('click', () => Voice.toggle());
 
+  // --- iOS-proof anchoring ---------------------------------------------------
+  // position:fixed;bottom:0 anchors to the LAYOUT viewport, which on iOS can be
+  // taller than what's actually visible (especially on first paint), floating
+  // the pill up with dead space below it. The visualViewport API is the only
+  // reliable source of the truly-visible area, so we drive the dock's bottom
+  // offset and the hub's usable height from it directly.
+  const vv = window.visualViewport;
+  function syncViewport() {
+    const root = document.documentElement;
+    if (!vv) return;
+    // Distance from the layout-viewport bottom up to the visible bottom (the iOS
+    // fix: this is often > 0 on first paint, and drives where the dock sits).
+    const bottomInset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    root.style.setProperty('--dock-bottom', bottomInset + 'px');
+    // The hub fills the visible viewport exactly; its own bottom padding (set in
+    // CSS to the dock height) keeps content clear of the dock. So --hub-h is just
+    // the visible height. Measured, not vh-unit — immune to the iOS dvh glitch.
+    root.style.setProperty('--hub-h', Math.round(vv.height) + 'px');
+  }
+  syncViewport();
+  if (vv) {
+    vv.addEventListener('resize', syncViewport);
+    vv.addEventListener('scroll', syncViewport);
+  }
+  window.addEventListener('resize', syncViewport);
+  window.addEventListener('orientationchange', syncViewport);
+  window.addEventListener('pageshow', syncViewport);
+  // Catch the late iOS viewport settle right after a cold launch.
+  let n = 0;
+  const raf = () => { syncViewport(); if (++n < 60) requestAnimationFrame(raf); };
+  requestAnimationFrame(raf);
+
   Voice.onChange((s, meta) => {
     dock.className = ''; // reset
     dock.classList.add('vd-' + s);

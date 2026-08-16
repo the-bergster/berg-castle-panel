@@ -478,16 +478,19 @@ a { color: inherit; text-decoration: none; }
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Use svh (small viewport height), NOT dvh. On iOS first paint dvh can report
-     a LARGER value than the real screen before it settles — which made the hub
-     taller than the viewport, so the fixed dock (bottom:0) anchored to the
-     over-tall document bottom and the pill floated mid-screen with dead space
-     under it. svh is the stable small-viewport height and is correct on the very
-     first paint, so the document never exceeds the screen and the pill sits at
-     the true bottom immediately. */
-  height: calc(100svh - var(--safe-top) - var(--dock-h) - 8px);
+  /* Height driven by JS (--hub-h = visible viewport height, measured from
+     visualViewport) so it never depends on flaky vh units / late env() insets.
+     Fallback = svh for the split second before JS runs. The hub owns its own
+     top (notch) and bottom (dock) insets via padding, so on the hub the body's
+     own padding is neutralised (see .hub-root parent rule below). */
+  height: var(--hub-h, 100svh);
   min-height: 0;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--dock-h);
 }
+/* On the hub, zero the body's vertical padding — hub-root handles insets itself
+   and is sized to the full visible viewport. Prevents double-counting -> scroll. */
+body:has(.hub-root) { padding-top: 0; padding-bottom: 0; }
 
 /* body already pads for --safe-top, so header just adds its own breathing room. */
 .hub-head {
