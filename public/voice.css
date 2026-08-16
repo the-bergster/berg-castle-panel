@@ -23,13 +23,20 @@ body.on-hub {
 #voice-dock {
   position: fixed;
   left: 0; right: 0;
+  /* Anchor to the real screen bottom on EVERY page, independent of page scroll
+     or the hub's overflow:hidden. env() reads the device home-indicator inset
+     directly so the pill sits in the exact same spot everywhere. */
   bottom: 0;
   z-index: 60;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  padding: var(--dock-scrim-top) 16px calc(var(--dock-gap-bottom) + var(--safe-bottom));
+  /* Fixed dock height so the pill's distance from the bottom is identical on
+     every route (was flex-column padding that could vary by context). */
+  height: calc(var(--dock-scrim-top) + var(--dock-pill) + var(--dock-gap-bottom) + env(safe-area-inset-bottom, 0px));
+  padding: 0 16px calc(var(--dock-gap-bottom) + env(safe-area-inset-bottom, 0px));
   pointer-events: none;
   background: linear-gradient(to top, var(--bg-0) 0%, var(--bg-0) 46%, rgba(8,8,10,0.92) 66%, rgba(8,8,10,0.6) 82%, transparent 100%);
 }
