@@ -60,6 +60,21 @@ function roomAvgLevel(room) {
   return Math.round(onOutputs.reduce((s, o) => s + levelOf(o.id), 0) / onOutputs.length);
 }
 
+// ---------- Fireplaces (top-level) ----------
+let FIREPLACE_ROOM_ID = null;
+function fireplaceRoom() {
+  const r = ROOMS.rooms.find(rm => rm.slug === 'fireplaces');
+  FIREPLACE_ROOM_ID = r ? r.id : null;
+  return r;
+}
+function fireplaceOutputs() {
+  const r = fireplaceRoom();
+  return r ? r.outputs : [];
+}
+function fireplaceOnCount() {
+  return fireplaceOutputs().filter(o => isOn(o.id)).length;
+}
+
 // ---------- WebSocket ----------
 
 function wsIsOpen() {
@@ -195,6 +210,9 @@ function route() {
   } else if (hash === '/cameras') {
     Music.teardown();
     renderCameras();
+  } else if (hash === '/fireplaces') {
+    Music.teardown();
+    renderFireplaces();
   } else if (hash.startsWith('/room/')) {
     Music.teardown();
     const id = parseInt(hash.split('/')[2], 10);
@@ -215,8 +233,9 @@ window.addEventListener('hashchange', route);
 // ---------- Rendering: Hub (landing home) ----------
 
 function renderHub() {
-  const totalOn = [...STATE.values()].filter(v => v > 0).length;
-  const totalRoomsOn = ROOMS.rooms.filter(r => roomOnCount(r) > 0).length;
+  const fpIds = new Set(fireplaceOutputs().map(o => o.id));
+  const totalOn = [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
+  const totalRoomsOn = ROOMS.rooms.filter(r => r.slug !== 'fireplaces' && roomOnCount(r) > 0).length;
   const { playing: musicPlaying, total: musicTotal } = musicPlayingCount();
 
   app.innerHTML = `
@@ -285,6 +304,19 @@ function renderHub() {
           <div class="hub-tile-title">Climate</div>
           <div class="hub-tile-sub" id="hub-climate-sub">Loading zones…</div>
         </div>
+      </button>
+
+      <button class="hub-tile hub-fireplaces" data-nav="/fireplaces">
+        <div class="hub-tile-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2c1 3-1 4-2 6s0 4 2 4 3-2 2-4c2 1 3 3 3 5a5 5 0 0 1-10 0c0-3 2-5 3-7 1-1.5 2-2.5 2-4z"/>
+          </svg>
+        </div>
+        <div class="hub-tile-body">
+          <div class="hub-tile-title">Fireplaces</div>
+          <div class="hub-tile-sub" id="hub-fireplaces-sub">${fireplaceOnCount() === 0 ? 'All off' : `${fireplaceOnCount()} of ${FIREPLACE_ROOM_ID ? fireplaceOutputs().length : 4} on`}</div>
+        </div>
+        ${fireplaceOnCount() > 0 ? `<div class="hub-tile-badge hub-badge-fire">${fireplaceOnCount()}</div>` : ''}
       </button>
 
       <button class="hub-tile hub-cameras" data-nav="/cameras">
@@ -750,6 +782,64 @@ const CAMERA_SLOTS = [
   { id: 5, label: 'Camera 5' },
 ];
 
+function renderFireplaces() {
+  const outputs = fireplaceOutputs();
+  const onCount = fireplaceOnCount();
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="topbar-back" data-back-hub>
+        <span class="chev">‹</span>
+      </button>
+      <div>
+        <div class="topbar-title">Fireplaces</div>
+        <span class="topbar-sub">${onCount === 0 ? 'All off' : `${onCount} of ${outputs.length} on`}</span>
+      </div>
+      <div class="conn-badge" id="conn-badge">
+        <span class="dot"></span>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+
+    <div class="room-detail fade-in">
+      <div class="room-actions">
+        <button class="room-action" data-fire-all="100">All On</button>
+        <button class="room-action off" data-fire-all="0">All Off</button>
+      </div>
+
+      <div class="output-list">
+        ${outputs.length
+          ? outputs.map(o => renderOutputCard(o)).join('')
+          : '<div class="camera-placeholder-label" style="padding:24px;text-align:center">No fireplaces found</div>'}
+      </div>
+    </div>
+  `;
+
+  const backBtn = app.querySelector('[data-back-hub]');
+  if (backBtn) backBtn.addEventListener('click', () => navigate('/'));
+
+  app.querySelectorAll('[data-fire-all]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pct = parseInt(btn.dataset.fireAll, 10);
+      for (const o of fireplaceOutputs()) {
+        fetch('/api/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: o.id, level: pct, fade: 0 }),
+        }).catch(() => {});
+      }
+    });
+  });
+
+  app.querySelectorAll('.output-card').forEach(card => {
+    if (card.dataset.switch === '1') attachSwitch(card);
+    else attachSlider(card);
+  });
+
+  connectWS();
+  setConn(ws && ws.readyState === WebSocket.OPEN ? 'live' : 'connecting');
+}
+
 function renderCameras() {
   app.innerHTML = `
     <div class="topbar">
@@ -794,8 +884,9 @@ function renderCameras() {
 // ---------- Rendering: Lights ----------
 
 function renderHome() {
-  const totalOn = [...STATE.values()].filter(v => v > 0).length;
-  const totalRoomsOn = ROOMS.rooms.filter(r => roomOnCount(r) > 0).length;
+  const fpIds = new Set(fireplaceOutputs().map(o => o.id));
+  const totalOn = [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
+  const totalRoomsOn = ROOMS.rooms.filter(r => r.slug !== 'fireplaces' && roomOnCount(r) > 0).length;
 
   app.innerHTML = `
     <div class="topbar">
@@ -1172,12 +1263,33 @@ function applyLevelToUI(id, level) {
     }
   }
 
+  // Hub Fireplaces tile (live count).
+  const fireTile = app.querySelector('.hub-fireplaces');
+  if (fireTile) {
+    const fon = fireplaceOnCount();
+    const ftotal = fireplaceOutputs().length || 4;
+    const sub = fireTile.querySelector('.hub-tile-sub');
+    if (sub) sub.textContent = fon === 0 ? 'All off' : `${fon} of ${ftotal} on`;
+    let badge = fireTile.querySelector('.hub-tile-badge');
+    if (fon > 0) {
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'hub-tile-badge hub-badge-fire';
+        fireTile.appendChild(badge);
+      }
+      badge.textContent = fon;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
   // Home summary counter
   const summaryNum = app.querySelector('.summary-num');
   const summaryLabel = app.querySelector('.summary-label');
   if (summaryNum) {
-    const totalOn = [...STATE.values()].filter(v => v > 0).length;
-    const totalRoomsOn = ROOMS.rooms.filter(r => roomOnCount(r) > 0).length;
+    const fpIds = new Set(fireplaceOutputs().map(o => o.id));
+    const totalOn = [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
+    const totalRoomsOn = ROOMS.rooms.filter(r => r.slug !== 'fireplaces' && roomOnCount(r) > 0).length;
     summaryNum.textContent = totalOn;
     if (summaryLabel) {
       summaryLabel.innerHTML = `${totalOn === 0 ? 'All off' : `${totalOn === 1 ? 'light' : 'lights'} on`}<br>

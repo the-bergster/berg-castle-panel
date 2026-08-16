@@ -81,10 +81,13 @@ const ZONE_ORDER = [
   'Bedrooms',
   'Utility',
   'Spa',
-  'Fireplaces',
   'Outside',
   'Other',
 ];
+
+// Zones intentionally excluded from the Lights grid. Fireplaces get their own
+// top-level Hub tile + page (Simon 2026-08-16), so they don't belong on /lights.
+const LIGHTS_HIDDEN_ZONES = new Set(['Fireplaces']);
 
 // -------- Room name overrides --------
 
@@ -207,10 +210,13 @@ function loadRooms() {
   // Drop rooms that ended up with zero outputs (shouldn't happen but safe)
   const finalRooms = rooms.filter(r => r.outputs.length > 0);
 
-  // Group by zone
+  // Group by zone (for the Lights view). Some zones — e.g. Fireplaces — are
+  // surfaced as their own top-level tile, so they're kept out of this grouping
+  // even though their rooms stay in `rooms` (accessible to dedicated pages).
   const zones = {};
   for (const zoneName of ZONE_ORDER) zones[zoneName] = [];
   for (const room of finalRooms) {
+    if (LIGHTS_HIDDEN_ZONES.has(room.zone)) continue;
     if (!zones[room.zone]) zones[room.zone] = [];
     zones[room.zone].push(room);
   }
