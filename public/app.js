@@ -1370,10 +1370,27 @@ function rerenderHubNow() {
   }
 }
 function wireViewportSettle() {
-  // Only re-render on genuine viewport changes (orientation etc.), NOT on a
-  // barrage of timers — the timed re-renders flickered the tiles and didn't fix
-  // the pill anyway, which told us the re-render isn't the real lever.
   window.addEventListener('orientationchange', rerenderHubNow);
+  // Simon's exact repro: on first load the tiles render at the wrong (smaller)
+  // height and the pill follows; visiting a tile and coming back re-renders the
+  // hub at the correct height and fixes it. So we reproduce that single corrective
+  // re-render programmatically once the viewport has settled — exactly once, so
+  // there's no visible multi-flicker. fade-in is already suppressed after the
+  // first render (_hubRenderedOnce), so this is a silent re-layout.
+  let corrected = false;
+  const correctOnce = () => {
+    if (corrected) return;
+    corrected = true;
+    rerenderHubNow();
+  };
+  // Wait for the visualViewport rAF tracking (~1s) to converge, then correct.
+  setTimeout(correctOnce, 550);
+  if (window.visualViewport) {
+    // If the viewport visibly changes before then (the iOS settle), correct on
+    // that signal instead — whichever comes first.
+    const onVv = () => { correctOnce(); window.visualViewport.removeEventListener('resize', onVv); };
+    window.visualViewport.addEventListener('resize', onVv);
+  }
 }
 
 async function boot() {
