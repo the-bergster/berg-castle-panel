@@ -1080,10 +1080,7 @@ function renderOutputCard(o) {
     return `
     <div class="output-card switch-card ${on ? 'on' : ''}" data-output-id="${o.id}" data-switch="1">
       <div class="output-head">
-        <div class="output-name">
-          ${escapeHtml(o.name)}
-          <span class="type">${o.type}</span>
-        </div>
+        <div class="output-name">${escapeHtml(o.name)}</div>
       </div>
       <button class="output-switch ${on ? 'on' : ''}" data-output-id="${o.id}" role="switch" aria-checked="${on}">
         <span class="output-switch-knob"></span>
@@ -1095,10 +1092,7 @@ function renderOutputCard(o) {
   return `
     <div class="output-card ${on ? 'on' : ''}" data-output-id="${o.id}">
       <div class="output-head">
-        <div class="output-name">
-          ${escapeHtml(o.name)}
-          <span class="type">${o.type}</span>
-        </div>
+        <div class="output-name">${escapeHtml(o.name)}</div>
         <div class="output-level">${Math.round(level)}%</div>
       </div>
       <div class="slider" data-output-id="${o.id}">
