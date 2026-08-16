@@ -1370,22 +1370,10 @@ function rerenderHubNow() {
   }
 }
 function wireViewportSettle() {
-  // Unconditional nudges to catch the late inset/viewport resolution on iOS.
-  requestAnimationFrame(rerenderHubNow);
-  window.addEventListener('load', rerenderHubNow);
-  [120, 350, 800, 1400].forEach(ms => setTimeout(rerenderHubNow, ms));
-  window.addEventListener('resize', rerenderHubNow);
+  // Only re-render on genuine viewport changes (orientation etc.), NOT on a
+  // barrage of timers — the timed re-renders flickered the tiles and didn't fix
+  // the pill anyway, which told us the re-render isn't the real lever.
   window.addEventListener('orientationchange', rerenderHubNow);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', rerenderHubNow);
-    window.visualViewport.addEventListener('scroll', rerenderHubNow);
-  }
-  // iOS standalone PWA: fired when the app is shown / re-foregrounded, which is
-  // also when insets finish resolving on a cold launch.
-  window.addEventListener('pageshow', rerenderHubNow);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) rerenderHubNow();
-  });
 }
 
 async function boot() {

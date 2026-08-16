@@ -478,10 +478,14 @@ a { color: inherit; text-decoration: none; }
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Usable area = viewport minus safe-top and the dock reserve. env() insets can
-     read 0 on iOS first paint, so the JS settle-rerender (wireViewportSettle)
-     recomputes this once they resolve. */
-  height: calc(100dvh - var(--safe-top) - var(--dock-h) - 8px);
+  /* Use svh (small viewport height), NOT dvh. On iOS first paint dvh can report
+     a LARGER value than the real screen before it settles — which made the hub
+     taller than the viewport, so the fixed dock (bottom:0) anchored to the
+     over-tall document bottom and the pill floated mid-screen with dead space
+     under it. svh is the stable small-viewport height and is correct on the very
+     first paint, so the document never exceeds the screen and the pill sits at
+     the true bottom immediately. */
+  height: calc(100svh - var(--safe-top) - var(--dock-h) - 8px);
   min-height: 0;
 }
 
