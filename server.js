@@ -143,9 +143,137 @@ async function runVoiceTool(name, args) {
       }
       return { ok: true, on_count: on.length, on };
     }
+
+    // ---- Climate (Ecobee) ----
+    case 'get_climate': {
+      const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+      let list = (body && body.thermostats) || [];
+      if (args.zone) {
+        const match = matchByName(list, args.zone, t => t.name);
+        list = match ? [match] : [];
+        if (!match) return { ok: false, error: `unknown climate zone: ${args.zone}` };
+      }
+      const zones = list.map(t => ({
+        zone: t.name,
+        temp: t.actualTemperature,
+        humidity: t.actualHumidity,
+        mode: t.hvacMode,
+        heatSetpoint: t.desiredHeat,
+        coolSetpoint: t.desiredCool,
+        hold: t.activeHold ? true : false,
+        schedule: t.currentClimateRef,
+      }));
+      return { ok: true, zones };
+    }
+    case 'set_temperature': {
+      const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+      const t = matchByName((body && body.thermostats) || [], args.zone, x => x.name);
+      if (!t) return { ok: false, error: `unknown climate zone: ${args.zone}` };
+      const temp = Math.round(args.temperature);
+      // Hold both setpoints at the target so it holds regardless of heat/cool mode.
+      await climate.bridgeRequest({
+        method: 'POST', path: '/hold/temp',
+        body: { index: t.index, coolTemp: temp, heatTemp: temp, holdType: 'nextTransition' },
+      });
+      return { ok: true, zone: t.name, temperature: temp };
+    }
+    case 'set_hvac_mode': {
+      const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+      const t = matchByName((body && body.thermostats) || [], args.zone, x => x.name);
+      if (!t) return { ok: false, error: `unknown climate zone: ${args.zone}` };
+      await climate.bridgeRequest({
+        method: 'POST', path: '/hvac-mode',
+        body: { index: t.index, hvacMode: args.mode },
+      });
+      return { ok: true, zone: t.name, mode: args.mode };
+    }
+    case 'resume_climate_schedule': {
+      if (!args.zone) {
+        await climate.bridgeRequest({ method: 'POST', path: '/resume-all', body: { resumeAll: false } });
+        return { ok: true, resumed: 'all zones' };
+      }
+      const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+      const t = matchByName((body && body.thermostats) || [], args.zone, x => x.name);
+      if (!t) return { ok: false, error: `unknown climate zone: ${args.zone}` };
+      await climate.bridgeRequest({ method: 'POST', path: '/resume', body: { index: t.index, resumeAll: false } });
+      return { ok: true, zone: t.name, resumed: true };
+    }
+
+    // ---- Music (Sonos) ----
+    case 'play_music': {
+      const room = matchSonosRoom(args.room);
+      if (!room) return { ok: false, error: `unknown music room: ${args.room}` };
+      if (!sonos.search || !sonos.search.enabled) return { ok: false, error: 'music search not configured' };
+      const type = args.type || 'track';
+      const results = await sonos.search.search(args.query, { types: [type], limit: 5 });
+      const bucket = ({ track: 'tracks', album: 'albums', artist: 'artists', playlist: 'playlists' })[type] || 'tracks';
+      const item = (results[bucket] || [])[0] || (results.tracks || [])[0];
+      if (!item) return { ok: false, error: `nothing found for "${args.query}"` };
+      await sonos.player.playItem(room, item, 'now');
+      return { ok: true, room, playing: item.title, artist: item.artist || null };
+    }
+    case 'control_music': {
+      const room = matchSonosRoom(args.room);
+      if (!room) return { ok: false, error: `unknown music room: ${args.room}` };
+      const a = args.action;
+      if (a === 'play') await sonos.player.play(room);
+      else if (a === 'pause') await sonos.player.pause(room);
+      else if (a === 'stop') await sonos.player.stop(room);
+      else if (a === 'next') await sonos.player.next(room);
+      else if (a === 'previous') await sonos.player.previous(room);
+      else return { ok: false, error: `unknown action: ${a}` };
+      return { ok: true, room, action: a };
+    }
+    case 'set_music_volume': {
+      const room = matchSonosRoom(args.room);
+      if (!room) return { ok: false, error: `unknown music room: ${args.room}` };
+      let vol;
+      if (typeof args.delta === 'number') vol = await sonos.player.adjustVolume(room, args.delta);
+      else if (typeof args.volume === 'number') vol = await sonos.player.setVolume(room, args.volume);
+      else return { ok: false, error: 'provide volume or delta' };
+      return { ok: true, room, volume: vol };
+    }
+    case 'get_music_state': {
+      const rooms = args.room ? [matchSonosRoom(args.room)].filter(Boolean) : (sonos.topology.rooms || []).map(r => r.name);
+      if (args.room && !rooms.length) return { ok: false, error: `unknown music room: ${args.room}` };
+      const playing = [];
+      for (const rm of rooms) {
+        try {
+          const np = await sonos.player.nowPlaying(rm);
+          if (np && np.state === 'PLAYING') {
+            const tr = np.track || {};
+            playing.push({
+              room: rm,
+              title: tr.title || null,
+              artist: tr.artist || null,
+              album: tr.album || null,
+            });
+          }
+        } catch (_) {}
+      }
+      return { ok: true, playing_count: playing.length, playing };
+    }
+
     default:
       return { ok: false, error: `unknown tool: ${name}` };
   }
+}
+
+// Fuzzy-match a spoken name against a list (exact, then contains, then startsWith).
+function matchByName(list, spoken, getName) {
+  if (!spoken) return null;
+  const q = String(spoken).toLowerCase().trim();
+  return list.find(x => getName(x).toLowerCase() === q)
+    || list.find(x => getName(x).toLowerCase().includes(q))
+    || list.find(x => q.includes(getName(x).toLowerCase()))
+    || null;
+}
+
+// Match a spoken room to a real Sonos room name; returns the canonical name.
+function matchSonosRoom(spoken) {
+  const rooms = (sonos.topology.rooms || []).map(r => r.name);
+  const m = matchByName(rooms.map(n => ({ n })), spoken, x => x.n);
+  return m ? m.n : null;
 }
 
 function handleUpgrade(req, socket) {
@@ -383,17 +511,29 @@ const server = http.createServer(async (req, res) => {
   }
   // Mint an ephemeral client secret (browser never sees the real key).
   if (req.method === 'GET' && pathname === '/api/voice/session') {
-    const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC);
-    voice.mintClientSecret(cfg)
-      .then((out) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ value: out.value, expires_at: out.expires_at, model: voice.MODEL }));
-      })
-      .catch((e) => {
-        console.error('[voice] mint failed:', e.message);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message }));
-      });
+    (async () => {
+      // Pull live climate zone names + Sonos room names so the agent knows the
+      // real setup. Both are best-effort — fall back to empty if unavailable.
+      let climateZones = [];
+      let sonosRooms = [];
+      try {
+        const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+        const list = (body && body.thermostats) || [];
+        climateZones = list.map(t => t.name).filter(Boolean);
+      } catch (e) { console.error('[voice] climate list failed:', e.message); }
+      try {
+        sonosRooms = [...new Set((sonos.topology.rooms || []).map(r => r.name).filter(Boolean))].sort();
+      } catch (e) { console.error('[voice] sonos list failed:', e.message); }
+
+      const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms);
+      const out = await voice.mintClientSecret(cfg);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ value: out.value, expires_at: out.expires_at, model: voice.MODEL }));
+    })().catch((e) => {
+      console.error('[voice] mint failed:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
     return;
   }
   // Execute a tool call the model requested (fired by the browser).

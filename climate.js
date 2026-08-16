@@ -155,4 +155,4 @@ async function checkBridge() {
   }
 }
 
-module.exports = { handle, checkBridge };
+module.exports = { handle, checkBridge, bridgeRequest };

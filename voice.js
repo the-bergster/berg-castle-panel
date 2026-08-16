@@ -35,7 +35,7 @@ function loadApiKey() {
 
 // -------- Agent knowledge (built from live data) --------
 
-function buildInstructions(roomsData, scenesData, synthetic) {
+function buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms) {
   const zones = roomsData.zones.map(z => {
     const rooms = z.rooms.map(r => {
       const outs = r.outputs
@@ -60,38 +60,65 @@ function buildInstructions(roomsData, scenesData, synthetic) {
     .map(s => `    - "${s.label}" (synthetic id "${s.id}")`)
     .join('\n');
 
+  const climateList = (climateZones && climateZones.length)
+    ? climateZones.map(z => `    - ${z}`).join('\n')
+    : '    (none found)';
+  const sonosList = (sonosRooms && sonosRooms.length)
+    ? sonosRooms.map(r => `    - ${r}`).join('\n')
+    : '    (none found)';
+
   return `You are the voice of Berg Castle — Simon Berg's smart home. You control the
-lighting, fireplaces, and scenes by calling tools. You are warm, brief, and
-confident. Speak like a capable house manager, not a chatbot. Confirm actions in
-a few words ("Lounge is at 30%", "Dining fireplace on"). Never read out numeric
-IDs unless asked.
+lighting, fireplaces, scenes, climate, and music by calling tools. You are warm,
+brief, and confident. Speak like a capable house manager, not a chatbot. Confirm
+actions in a few words ("Lounge is at 30%", "Kitchen set to 70", "Playing Beat It
+in the kitchen"). Never read out numeric IDs unless asked.
 
 CORE BEHAVIOUR
 - When asked to change something, CALL THE TOOL. Don't just describe it.
 - Batch related changes when natural (e.g. "movie mode" = dim + fireplace on).
-- If a room or output is ambiguous, ask one short clarifying question.
-- To answer "what's on?" call get_state first, then summarise briefly.
+- If a room, zone, or output is ambiguous, ask one short clarifying question.
+- To answer "what's on?" call get_state; for temperature call get_climate; for
+  "what's playing" call get_music_state. Then summarise briefly.
 - Levels are 0-100. "Off" = 0. "Full"/"bright" = 100. "Dim"/"low" ~ 25-30.
 - Fireplaces are ON/OFF only: use set_fireplace with on=true/false.
 
+CLIMATE (Ecobee zones)
+- Temperatures are Fahrenheit. "Warmer"/"cooler" = adjust ~2-3°F from current;
+  call get_climate first if you need the current setpoint.
+- set_temperature holds a target; set_hvac_mode switches heat/cool/auto/off;
+  resume_climate_schedule cancels a hold.
+- Match the spoken room to the closest zone name below. If unclear, ask.
+
+MUSIC (Sonos)
+- play_music takes a natural query + a room, searches (Spotify) and plays it.
+  e.g. "play Michael Jackson Beat It in the kitchen".
+- control_music for play/pause/skip; set_music_volume for louder/quieter
+  (use delta +/-10 for "turn it up/down", absolute for "set to 40").
+- Match the spoken room to the closest Sonos room name below.
+
 HELPFUL SCENE SHORTHAND
-- "All off" / "everything off" → all_off.
+- "All off" / "everything off" → all_off (lights only).
 - "Fireplaces on/off" → fire_synthetic_scene with the matching synthetic id.
 
-THE HOUSE (rooms grouped by zone, with the outputs in each):
+THE HOUSE (lighting rooms grouped by zone, with the outputs in each):
 ${zones}
 
 FIREPLACES (on/off switches):
 ${fires}
 
-SCENES you can fire:
+LIGHTING SCENES you can fire:
   Pico scenes:
 ${homeScenes || '    (none)'}
   Synthetic scenes:
 ${synthScenes || '    (none)'}
 
-If someone asks about cameras, music, or climate, say those are coming soon —
-you only control lighting, fireplaces, and scenes for now.`;
+CLIMATE ZONES (thermostats):
+${climateList}
+
+SONOS MUSIC ROOMS:
+${sonosList}
+
+Cameras are coming soon — you can't see them yet.`;
 }
 
 // -------- Tool schemas exposed to the model --------
@@ -185,15 +212,119 @@ function toolSchemas() {
       description: 'Get the current on/off + level of everything. Call before answering "what is on".',
       parameters: { type: 'object', properties: {} },
     },
+
+    // ---- Climate (Ecobee) ----
+    {
+      type: 'function',
+      name: 'get_climate',
+      description: 'Read current climate for all zones (or one): actual temp, humidity, mode, setpoints, and whether a hold is active. Call before answering any "how warm/cold is" or "what is the temperature" question.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zone: { type: 'string', description: 'Optional exact thermostat/zone name to filter to one.' },
+        },
+      },
+    },
+    {
+      type: 'function',
+      name: 'set_temperature',
+      description: 'Set/hold a target temperature for a climate zone. Provide the zone name and the desired temperature in Fahrenheit. Use for "make the kitchen warmer", "set the master to 70", etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zone: { type: 'string', description: 'Exact thermostat/zone name.' },
+          temperature: { type: 'integer', description: 'Target temperature in Fahrenheit (e.g. 70).' },
+        },
+        required: ['zone', 'temperature'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'set_hvac_mode',
+      description: 'Set a climate zone to heat, cool, auto, or off.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zone: { type: 'string', description: 'Exact thermostat/zone name.' },
+          mode: { type: 'string', enum: ['heat', 'cool', 'auto', 'off'] },
+        },
+        required: ['zone', 'mode'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'resume_climate_schedule',
+      description: 'Cancel a manual hold and resume the normal schedule for a climate zone (or all zones if zone omitted).',
+      parameters: {
+        type: 'object',
+        properties: {
+          zone: { type: 'string', description: 'Exact thermostat/zone name, or omit for all zones.' },
+        },
+      },
+    },
+
+    // ---- Music (Sonos) ----
+    {
+      type: 'function',
+      name: 'play_music',
+      description: 'Search for music and play it in a room. Use for "play Beat It in the kitchen", "put on some Miles Davis in the lounge". Provide a natural search query and the room.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'What to play, e.g. "Michael Jackson Beat It" or "Miles Davis Kind of Blue".' },
+          room: { type: 'string', description: 'Exact Sonos room name (e.g. Kitchen, Lounge, Pool).' },
+          type: { type: 'string', enum: ['track', 'album', 'artist', 'playlist'], description: 'What kind of result to prefer. Default track.' },
+        },
+        required: ['query', 'room'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'control_music',
+      description: 'Transport control for a Sonos room: play, pause, stop, next, previous.',
+      parameters: {
+        type: 'object',
+        properties: {
+          room: { type: 'string', description: 'Exact Sonos room name.' },
+          action: { type: 'string', enum: ['play', 'pause', 'stop', 'next', 'previous'] },
+        },
+        required: ['room', 'action'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'set_music_volume',
+      description: 'Set or adjust the volume of a Sonos room. Give either an absolute volume 0-100, or a relative delta (e.g. +10, -10 for "turn it up/down").',
+      parameters: {
+        type: 'object',
+        properties: {
+          room: { type: 'string', description: 'Exact Sonos room name.' },
+          volume: { type: 'integer', minimum: 0, maximum: 100, description: 'Absolute volume 0-100.' },
+          delta: { type: 'integer', description: 'Relative change, e.g. 10 or -10.' },
+        },
+        required: ['room'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'get_music_state',
+      description: 'Get what is playing across Sonos rooms (or one room). Call before answering "what is playing".',
+      parameters: {
+        type: 'object',
+        properties: {
+          room: { type: 'string', description: 'Optional exact Sonos room name to filter to one.' },
+        },
+      },
+    },
   ];
 }
 
-function buildSessionConfig(roomsData, scenesData, synthetic) {
+function buildSessionConfig(roomsData, scenesData, synthetic, climateZones, sonosRooms) {
   return {
     type: 'realtime',
     model: MODEL,
     audio: { output: { voice: VOICE } },
-    instructions: buildInstructions(roomsData, scenesData, synthetic),
+    instructions: buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms),
     tools: toolSchemas(),
     tool_choice: 'auto',
   };
