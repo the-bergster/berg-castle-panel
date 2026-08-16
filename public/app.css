@@ -477,10 +477,23 @@ a { color: inherit; text-decoration: none; }
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Fill at least the space between the notch and the dock. svh is stable on
-     first paint; if content is a touch taller it simply flows (rare). */
+  /* CRITICAL (debug HUD 2026-08-16): on iOS the home page got a SHORTER viewport
+     (793) than scrollable pages (852) — because home fit with no scroll, iOS kept
+     the status-bar-collapsed viewport, so the bottom-pinned pill sat 59px high on
+     home only. Fix: make home fill the LARGE viewport (100lvh) so it's in the
+     same (full-height) viewport state as every scrollable page — the pill then
+     lands at the identical physical bottom everywhere. */
   min-height: calc(100svh - var(--safe-top) - var(--dock-h) - 8px);
 }
+/* The home page fit exactly with no scroll, so iOS kept a SHORTER viewport
+   (793) than the scrollable inner pages (852) — confirmed by the on-device debug
+   HUD 2026-08-16. A viewport-unit min-height can't break that chicken-and-egg
+   (lvh also collapses when there's no scroll). Force the document to be a hair
+   TALLER than the large viewport so iOS always commits to the full (852)
+   viewport — same state as every scrollable page — and the bottom-pinned pill
+   lands identically. The overflow is tiny (a few px) so it's effectively not
+   scrollable to the eye. */
+body:has(.hub-root) { min-height: 1200px; }
 
 /* body already pads for --safe-top, so header just adds its own breathing room. */
 .hub-head {
