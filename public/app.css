@@ -506,11 +506,12 @@ a { color: inherit; text-decoration: none; }
   grid-template-columns: 1fr 1fr;
   /* minmax(0,..) lets tracks compress below content min so nothing overflows
      into the dock. 5 row-units: Lights hero (1-2), pairs (3-4), Cameras (5). */
+  /* 4 rows: Lights banner (short), two pair rows (the meat), Cameras banner. */
   grid-template-rows:
-    minmax(0, 0.82fr) minmax(0, 0.82fr)
-    minmax(0, 0.96fr) minmax(0, 0.96fr)
-    minmax(0, 0.84fr);
-  gap: 9px;
+    minmax(0, 0.62fr)
+    minmax(0, 1fr) minmax(0, 1fr)
+    minmax(0, 0.62fr);
+  gap: 10px;
   padding: 6px 20px 8px;
 }
 @media (min-width: 560px) {
@@ -520,9 +521,9 @@ a { color: inherit; text-decoration: none; }
     gap: 14px; padding: 12px 24px 16px;
   }
 }
-/* Lights is the primary tile — full-width hero on mobile, 2x2 on wide. */
-.b-lights { grid-column: 1 / -1; grid-row: span 2; }
-@media (min-width: 560px) { .b-lights { grid-column: span 2; grid-row: span 2; } }
+/* Lights primary — full-width banner (single short row). */
+.b-lights { grid-column: 1 / -1; grid-row: span 1; }
+@media (min-width: 560px) { .b-lights { grid-column: 1 / -1; grid-row: span 1; } }
 /* Cameras closes the last row cleanly (spans both cols on mobile). */
 .b-cameras { grid-column: 1 / -1; }
 @media (min-width: 560px) { .b-cameras { grid-column: span 2; } }
@@ -568,8 +569,8 @@ a { color: inherit; text-decoration: none; }
   color: var(--tile-color, var(--accent-bright));
 }
 .bt-icon svg { width: 21px; height: 21px; }
-.b-lights .bt-icon { width: 52px; height: 52px; border-radius: 16px; }
-.b-lights .bt-icon svg { width: 28px; height: 28px; }
+.b-lights .bt-icon { width: 44px; height: 44px; border-radius: 13px; }
+.b-lights .bt-icon svg { width: 24px; height: 24px; }
 
 .bt-count {
   min-width: 30px; height: 26px; padding: 0 10px;
@@ -589,7 +590,7 @@ a { color: inherit; text-decoration: none; }
 
 .bt-foot { }
 .bt-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 2px; }
-.b-lights .bt-title { font-size: 22px; }
+.b-lights .bt-title { font-size: 17px; }
 .bt-sub { font-size: 12.5px; color: var(--text-mid); }
 .b-lights .bt-sub { font-size: 14px; }
 
@@ -597,23 +598,15 @@ a { color: inherit; text-decoration: none; }
 .bento-tile:not(.active) .bt-icon { color: var(--text-mid); }
 
 /* Lights primary: room chips that give the big tile a reason to be big. */
-.b-lights { justify-content: flex-start; gap: 10px; }
-.b-lights .bt-top { flex: 0 0 auto; }
-.b-lights .bt-rooms {
-  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px;
-  flex: 1 1 auto;      /* chips absorb the middle space — no dead gap */
-  min-height: 0;
-  overflow: hidden;
+/* Lights + Cameras are matched full-width banners: icon left, label, chip right. */
+.b-lights, .b-cameras {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
 }
-.b-lights .bt-foot { flex: 0 0 auto; margin-top: 0; }
-.b-lights .bt-room-chip {
-  font-size: 12px; color: var(--text-mid);
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  padding: 4px 10px; border-radius: 999px;
-  white-space: nowrap;
-}
-.b-lights .bt-room-chip b { color: var(--accent-bright); font-weight: 600; font-variant-numeric: tabular-nums; }
+.b-lights .bt-top, .b-cameras .bt-top { flex: 0 0 auto; width: auto; }
+.b-lights .bt-foot, .b-cameras .bt-foot { flex: 1 1 auto; }
+.b-lights .bt-count { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); }
 
 /* Per-tile accent colours (icon + active wash) */
 .b-lights   { --tile-color: var(--accent-bright); --tile-wash: rgba(255,184,77,0.14); --tile-edge: rgba(255,184,77,0.38); }
@@ -623,6 +616,10 @@ a { color: inherit; text-decoration: none; }
 .b-intercom { --tile-color: var(--danger); --tile-wash: rgba(255,106,92,0.12); }
 .b-cameras  { --tile-color: #a78bfa; --tile-wash: rgba(167,139,250,0.12); }
 .b-cameras .bt-icon, .b-intercom { color: var(--text-mid); }
+
+/* Cameras is full-width + short — lay it out horizontally so it reads as a
+   deliberate wide tile, not a stretched square. */
+.b-cameras .bt-soon { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); }
 
 /* ---------- Cameras (placeholder shell) ---------- */
 .cameras-grid {

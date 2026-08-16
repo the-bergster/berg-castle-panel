@@ -80,17 +80,6 @@ function lightsOnCount() {
   const fpIds = new Set(fireplaceOutputs().map(o => o.id));
   return [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
 }
-// Rooms with lights on -> compact chips for the primary tile.
-function lightsRoomChips() {
-  const rooms = ROOMS.rooms
-    .filter(r => r.slug !== 'fireplaces')
-    .map(r => ({ name: r.name, on: roomOnCount(r) }))
-    .filter(r => r.on > 0)
-    .sort((a, b) => b.on - a.on)
-    .slice(0, 4);
-  if (!rooms.length) return '<span class="bt-room-chip" style="opacity:.6">Everything off</span>';
-  return rooms.map(r => `<span class="bt-room-chip">${escapeHtml(r.name)} <b>${r.on}</b></span>`).join('');
-}
 // One scene-level line — counts SYSTEMS active, not rooms/lights (which the
 // tiles already show). Additive, not redundant.
 function hubSummaryText() {
@@ -297,7 +286,6 @@ function renderHub() {
           </span>
           ${totalOn > 0 ? `<span class="bt-count">${totalOn}</span>` : ''}
         </div>
-        <div class="bt-rooms" id="hub-lights-rooms">${lightsRoomChips()}</div>
         <div class="bt-foot">
           <div class="bt-title">Lights</div>
           <div class="bt-sub">${totalOn === 0 ? 'All off' : `${totalOn} on · ${totalRoomsOn} ${totalRoomsOn === 1 ? 'room' : 'rooms'}`}</div>
@@ -1278,8 +1266,7 @@ function applyLevelToUI(id, level) {
   }
   const summaryLine = document.getElementById('hub-summary-line');
   if (summaryLine) summaryLine.innerHTML = hubSummaryText();
-  const roomsEl = document.getElementById('hub-lights-rooms');
-  if (roomsEl) roomsEl.innerHTML = lightsRoomChips();
+
 
   // Home summary counter (Lights page)
   const summaryNum = app.querySelector('.summary-num');

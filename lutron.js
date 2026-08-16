@@ -122,7 +122,12 @@ class LutronClient extends EventEmitter {
     await this.waitReady();
     const fadeHMS = `00:00:${String(Math.max(0, Math.floor(fadeSeconds))).padStart(2, '0')}`;
     this.socket.write(`#OUTPUT,${id},1,${level.toFixed(2)},${fadeHMS}\r\n`);
+    const prev = this.state.get(id);
     this.state.set(id, level);
+    // Broadcast immediately so every connected client (including ones the voice
+    // agent isn't driving) repaints without waiting for the Lutron echo. The
+    // echo handler is idempotent (prev===level -> no re-emit), so no dupes.
+    if (prev !== level) this.emit('change', { id, level, prev });
     return level;
   }
 
@@ -131,7 +136,9 @@ class LutronClient extends EventEmitter {
     for (const c of commands) {
       const fadeHMS = `00:00:${String(Math.max(0, Math.floor(c.fade || 1))).padStart(2, '0')}`;
       this.socket.write(`#OUTPUT,${c.id},1,${c.level.toFixed(2)},${fadeHMS}\r\n`);
+      const prev = this.state.get(c.id);
       this.state.set(c.id, c.level);
+      if (prev !== c.level) this.emit('change', { id: c.id, level: c.level, prev });
     }
   }
 
