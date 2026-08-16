@@ -470,27 +470,17 @@ a { color: inherit; text-decoration: none; }
 .room-scene:active { transform: scale(0.94); }
 
 /* ---------- Hub (home landing) ---------- */
-/* The hub uses the SAME layout model as every other page: normal document flow
-   inside the body (which pads the bottom for the fixed dock). It just happens to
-   fit in one screen. This keeps the fixed voice dock anchored identically on the
-   hub as everywhere else — the previous overflow:hidden + 100svh + zeroed body
-   padding special-case is what made the pill sit higher on the home page. */
+/* The hub is just normal document flow inside the body — exactly like every
+   other page. The body pads top for the notch and bottom for the fixed dock.
+   The dock is anchored independently (fixed distance from screen bottom), so the
+   hub's height doesn't affect it at all. It just happens to fit one screen. */
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Height driven by JS (--hub-h = visible viewport height, measured from
-     visualViewport) so it never depends on flaky vh units / late env() insets.
-     Fallback = svh for the split second before JS runs. The hub owns its own
-     top (notch) and bottom (dock) insets via padding, so on the hub the body's
-     own padding is neutralised (see .hub-root parent rule below). */
-  height: var(--hub-h, 100svh);
-  min-height: 0;
-  padding-top: var(--safe-top);
-  padding-bottom: var(--dock-h);
+  /* Fill at least the space between the notch and the dock. svh is stable on
+     first paint; if content is a touch taller it simply flows (rare). */
+  min-height: calc(100svh - var(--safe-top) - var(--dock-h) - 8px);
 }
-/* On the hub, zero the body's vertical padding — hub-root handles insets itself
-   and is sized to the full visible viewport. Prevents double-counting -> scroll. */
-body:has(.hub-root) { padding-top: 0; padding-bottom: 0; }
 
 /* body already pads for --safe-top, so header just adds its own breathing room. */
 .hub-head {

@@ -1359,48 +1359,11 @@ function escapeHtml(s) {
 // load it can compute against stale (0) insets — which is exactly why the pill
 // sat too high until you navigated away and back (that forced a re-render).
 // Re-render the current route once the viewport settles, and whenever it changes.
-// The hub's height depends on safe-area env() insets, which iOS resolves a beat
-// AFTER first paint. Height-change detection isn't enough (the inset can settle
-// without innerHeight changing), so on the hub we just re-render a few times
-// right after first load to guarantee it recomputes against settled insets.
-function rerenderHubNow() {
-  const hash = location.hash.slice(1) || '/';
-  if (hash === '/' || hash === '') {
-    try { route(); } catch (_) {}
-  }
-}
-function wireViewportSettle() {
-  window.addEventListener('orientationchange', rerenderHubNow);
-  // Simon's exact repro: on first load the tiles render at the wrong (smaller)
-  // height and the pill follows; visiting a tile and coming back re-renders the
-  // hub at the correct height and fixes it. So we reproduce that single corrective
-  // re-render programmatically once the viewport has settled — exactly once, so
-  // there's no visible multi-flicker. fade-in is already suppressed after the
-  // first render (_hubRenderedOnce), so this is a silent re-layout.
-  let corrected = false;
-  const correctOnce = () => {
-    if (corrected) return;
-    corrected = true;
-    rerenderHubNow();
-  };
-  // Wait for the visualViewport rAF tracking (~1s) to converge, then correct.
-  setTimeout(correctOnce, 550);
-  if (window.visualViewport) {
-    // If the viewport visibly changes before then (the iOS settle), correct on
-    // that signal instead — whichever comes first.
-    const onVv = () => { correctOnce(); window.visualViewport.removeEventListener('resize', onVv); };
-    window.visualViewport.addEventListener('resize', onVv);
-  }
-}
-
 async function boot() {
-  // Mount the persistent dock BEFORE the first render so its layout is settled
-  // when the hub paints (avoids the first-load pill-position glitch on iOS).
   if (window.mountVoiceDock) mountVoiceDock();
   await Promise.all([fetchRooms(), fetchScenes(), fetchState()]);
   route();
   connectWS();
-  wireViewportSettle();
 }
 
 window.setConn = setConn;

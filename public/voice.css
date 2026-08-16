@@ -13,26 +13,18 @@
    rule — no special-casing — so the fixed dock anchors identically everywhere. */
 body { padding-bottom: calc(var(--dock-h) + 8px); }
 
+/* Dead simple: the pill sits a FIXED distance from the very bottom of the screen
+   on every page. No viewport measuring, no JS, no per-page math. Just fixed +
+   bottom offset (home-indicator inset + a small gap). This is the whole fix. */
 #voice-dock {
   position: fixed;
   left: 0; right: 0;
-  /* Anchored via JS (--dock-bottom, from visualViewport) so it always sits at
-     the real visible bottom on iOS — fixed;bottom:0 alone anchors to the layout
-     viewport, which can be taller than what's visible, floating the pill up.
-     Fallback 0 for first paint / non-iOS. */
-  bottom: var(--dock-bottom, 0px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
   z-index: 60;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  /* Fixed dock height so the pill's distance from the bottom is identical on
-     every route (was flex-column padding that could vary by context). */
-  height: calc(var(--dock-scrim-top) + var(--dock-pill) + var(--dock-gap-bottom) + env(safe-area-inset-bottom, 0px));
-  padding: 0 16px calc(var(--dock-gap-bottom) + env(safe-area-inset-bottom, 0px));
+  justify-content: center;
+  padding: 0 16px;
   pointer-events: none;
-  background: linear-gradient(to top, var(--bg-0) 0%, var(--bg-0) 46%, rgba(8,8,10,0.92) 66%, rgba(8,8,10,0.6) 82%, transparent 100%);
 }
 
 .vd-btn {
@@ -131,7 +123,3 @@ body { padding-bottom: calc(var(--dock-h) + 8px); }
   50% { transform: scale(1.08); }
 }
 
-/* When the session is live, the dock lifts into a clearer anchored bar. */
-#voice-dock.vd-live, #voice-dock.vd-connecting, #voice-dock.vd-speaking {
-  background: linear-gradient(to top, var(--bg-0) 0%, var(--bg-0) 52%, rgba(8,8,10,0.94) 72%, rgba(8,8,10,0.55) 88%, transparent 100%);
-}
