@@ -822,11 +822,8 @@ function renderFireplaces() {
     btn.addEventListener('click', () => {
       const pct = parseInt(btn.dataset.fireAll, 10);
       for (const o of fireplaceOutputs()) {
-        fetch('/api/set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: o.id, level: pct, fade: 0 }),
-        }).catch(() => {});
+        // Optimistic STATE + repaint per output, then fire the set.
+        setOutput(o.id, pct, 0);
       }
     });
   });
@@ -1189,20 +1186,10 @@ function attachSwitch(card) {
   if (!btn) return;
 
   btn.addEventListener('click', () => {
-    const currentlyOn = levelOf(id) > 0;
-    const pct = currentlyOn ? 0 : 100;
-
-    // Optimistic paint.
-    btn.classList.toggle('on', pct > 0);
-    btn.setAttribute('aria-checked', pct > 0 ? 'true' : 'false');
-    card.classList.toggle('on', pct > 0);
-    updateRoomSummary(id);
-
-    fetch('/api/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, level: pct, fade: 0 }),
-    }).catch(() => {});
+    const pct = levelOf(id) > 0 ? 0 : 100;
+    // setOutput updates STATE optimistically + repaints via applyLevelToUI,
+    // so the next toggle reads the correct state even before the Lutron echo.
+    setOutput(id, pct, 0);
   });
 }
 
