@@ -478,12 +478,9 @@ a { color: inherit; text-decoration: none; }
 .hub-root {
   display: flex;
   flex-direction: column;
-  /* Fill the space the body gives us so the bento stretches to the dock and
-     there's no dead gap at the bottom. body already subtracts safe-top (padding)
-     and reserves the dock via padding-bottom, so 100% of the body content box
-     is exactly the usable area. */
-  /* body pads top by safe-top and bottom by (dock-h + 8) — see voice.css. So the
-     body content box, which hub-root fills exactly, is dvh minus those. */
+  /* Usable area = viewport minus safe-top and the dock reserve. env() insets can
+     read 0 on iOS first paint, so the JS settle-rerender (wireViewportSettle)
+     recomputes this once they resolve. */
   height: calc(100dvh - var(--safe-top) - var(--dock-h) - 8px);
   min-height: 0;
 }

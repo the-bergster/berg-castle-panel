@@ -271,6 +271,7 @@ window.addEventListener('hashchange', route);
 
 // ---------- Rendering: Hub (landing home) ----------
 
+let _hubRenderedOnce = false;
 function renderHub() {
   const fpIds = new Set(fireplaceOutputs().map(o => o.id));
   const totalOn = [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
@@ -283,7 +284,7 @@ function renderHub() {
 
   app.innerHTML = `
     <div class="hub-root">
-    <div class="hub-head fade-in">
+    <div class="hub-head ${_hubRenderedOnce ? '' : 'fade-in'}">
       <div class="hub-head-row">
         <div>
           <div class="hub-greeting">${greeting}</div>
@@ -294,7 +295,7 @@ function renderHub() {
       <div class="hub-summary-line" id="hub-summary-line">${hubSummaryText()}</div>
     </div>
 
-    <div class="bento fade-in">
+    <div class="bento ${_hubRenderedOnce ? '' : 'fade-in'}">
       <button class="bento-tile b-lights ${totalOn > 0 ? 'active' : ''}" data-nav="/lights" style="--i:0">
         <div class="bt-top">
           <span class="bt-icon">
@@ -363,6 +364,8 @@ function renderHub() {
     </div>
     </div>
   `;
+
+  _hubRenderedOnce = true;
 
   // Wire tiles
   app.querySelectorAll('[data-nav]').forEach(el => {
@@ -1356,34 +1359,33 @@ function escapeHtml(s) {
 // load it can compute against stale (0) insets — which is exactly why the pill
 // sat too high until you navigated away and back (that forced a re-render).
 // Re-render the current route once the viewport settles, and whenever it changes.
-let _settleReroute;
-let _lastViewportH = 0;
-function rerenderOnSettle() {
-  clearTimeout(_settleReroute);
-  _settleReroute = setTimeout(() => {
-    // Only re-render if the usable viewport height actually changed (i.e. iOS
-    // just resolved the real insets / dvh). Avoids needless hub re-animation.
-    const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-    if (Math.abs(h - _lastViewportH) < 2) return;
-    _lastViewportH = h;
-    const hash = location.hash.slice(1) || '/';
-    // The hub is the only route whose layout depends on the settled height.
-    if (hash === '/' || hash === '') {
-      try { route(); } catch (_) {}
-    }
-  }, 60);
+// The hub's height depends on safe-area env() insets, which iOS resolves a beat
+// AFTER first paint. Height-change detection isn't enough (the inset can settle
+// without innerHeight changing), so on the hub we just re-render a few times
+// right after first load to guarantee it recomputes against settled insets.
+function rerenderHubNow() {
+  const hash = location.hash.slice(1) || '/';
+  if (hash === '/' || hash === '') {
+    try { route(); } catch (_) {}
+  }
 }
 function wireViewportSettle() {
-  // A few nudges right after boot to catch the late inset/viewport resolution.
-  requestAnimationFrame(rerenderOnSettle);
-  window.addEventListener('load', rerenderOnSettle);
-  setTimeout(rerenderOnSettle, 250);
-  setTimeout(rerenderOnSettle, 600);
-  window.addEventListener('resize', rerenderOnSettle);
-  window.addEventListener('orientationchange', rerenderOnSettle);
+  // Unconditional nudges to catch the late inset/viewport resolution on iOS.
+  requestAnimationFrame(rerenderHubNow);
+  window.addEventListener('load', rerenderHubNow);
+  [120, 350, 800, 1400].forEach(ms => setTimeout(rerenderHubNow, ms));
+  window.addEventListener('resize', rerenderHubNow);
+  window.addEventListener('orientationchange', rerenderHubNow);
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', rerenderOnSettle);
+    window.visualViewport.addEventListener('resize', rerenderHubNow);
+    window.visualViewport.addEventListener('scroll', rerenderHubNow);
   }
+  // iOS standalone PWA: fired when the app is shown / re-foregrounded, which is
+  // also when insets finish resolving on a cold launch.
+  window.addEventListener('pageshow', rerenderHubNow);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) rerenderHubNow();
+  });
 }
 
 async function boot() {
