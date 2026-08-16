@@ -57,6 +57,9 @@ const ZONE_MAP = {
   // Spa
   176: 'Spa',
 
+  // Fireplaces (kept as its own room/tile — outputs render as switches)
+  140: 'Fireplaces',
+
   // Outside
   46: 'Outside',
   170: 'Outside',
@@ -78,6 +81,7 @@ const ZONE_ORDER = [
   'Bedrooms',
   'Utility',
   'Spa',
+  'Fireplaces',
   'Outside',
   'Other',
 ];
@@ -110,19 +114,18 @@ const HIDDEN_OUTPUT_IDS = new Set([
 ]);
 
 // -------- Cross-room output moves --------
-// Fireplaces area (140) has 4 outputs that physically live in other rooms.
-// Move each output into its logical home room.
+// (Fireplaces used to be redistributed into their home rooms; Simon asked
+//  2026-08-16 to keep them together in a dedicated "Fireplaces" tile, rendered
+//  as switches rather than sliders. So no fireplace moves anymore.)
 // Format: { output_id: target_area_id }
-const OUTPUT_MOVES = {
-  80: 61,   // Office Fireplace → Office
-  151: 58,  // Dining Fireplace → Dining Room
-  152: 63,  // Foyer Fireplace → Side Foyer
-  154: 5,   // Master Fireplace → Master Suite
-};
+const OUTPUT_MOVES = {};
+
+// Output ids that live in the Fireplaces room — flagged so the UI renders them
+// as on/off switches instead of dimmer sliders.
+const FIREPLACE_OUTPUT_IDS = new Set([80, 151, 152, 154]);
 
 // Rooms to drop entirely from the UI (they get emptied out by output moves)
 const DROP_ROOM_IDS = new Set([
-  140, // Fireplaces — outputs redistributed above
   207, // Extractor Fan Kitchen — merged into Kitchen (its lone output moves)
 ]);
 
@@ -162,6 +165,7 @@ function loadRooms() {
           ...o,
           name: OUTPUT_NAME_OVERRIDES[o.id] || decodeEntities(o.name),
           _origin_room_id: r.id,
+          isFireplace: FIREPLACE_OUTPUT_IDS.has(o.id),
         })),
       zone: ZONE_MAP[r.id] || 'Other',
     }));

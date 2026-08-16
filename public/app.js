@@ -971,9 +971,10 @@ function renderRoom(roomId) {
     });
   });
 
-  // Wire sliders
+  // Wire sliders (dimmers) and switches (fireplaces).
   app.querySelectorAll('.output-card').forEach(card => {
-    attachSlider(card);
+    if (card.dataset.switch === '1') attachSwitch(card);
+    else attachSlider(card);
   });
 
   setConn(ws && ws.readyState === WebSocket.OPEN ? 'live' : 'connecting');
@@ -982,6 +983,24 @@ function renderRoom(roomId) {
 function renderOutputCard(o) {
   const level = levelOf(o.id);
   const on = level > 0;
+
+  // Fireplaces are on/off only — render a switch, not a dimmer slider.
+  if (o.isFireplace) {
+    return `
+    <div class="output-card switch-card ${on ? 'on' : ''}" data-output-id="${o.id}" data-switch="1">
+      <div class="output-head">
+        <div class="output-name">
+          ${escapeHtml(o.name)}
+          <span class="type">${o.type}</span>
+        </div>
+      </div>
+      <button class="output-switch ${on ? 'on' : ''}" data-output-id="${o.id}" role="switch" aria-checked="${on}">
+        <span class="output-switch-knob"></span>
+      </button>
+    </div>
+  `;
+  }
+
   return `
     <div class="output-card ${on ? 'on' : ''}" data-output-id="${o.id}">
       <div class="output-head">
@@ -1078,6 +1097,30 @@ function attachSlider(card) {
   slider.addEventListener('touchstart', onStart, { passive: false });
 }
 
+// Fireplaces (and other on/off loads) get a simple switch. On = 100%, Off = 0%.
+function attachSwitch(card) {
+  const id = parseInt(card.dataset.outputId, 10);
+  const btn = card.querySelector('.output-switch');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    const currentlyOn = levelOf(id) > 0;
+    const pct = currentlyOn ? 0 : 100;
+
+    // Optimistic paint.
+    btn.classList.toggle('on', pct > 0);
+    btn.setAttribute('aria-checked', pct > 0 ? 'true' : 'false');
+    card.classList.toggle('on', pct > 0);
+    updateRoomSummary(id);
+
+    fetch('/api/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, level: pct, fade: 0 }),
+    }).catch(() => {});
+  });
+}
+
 // Apply an incoming level update to whatever UI is on screen
 function applyLevelToUI(id, level) {
   const pct = Math.round(level);
@@ -1109,12 +1152,24 @@ function applyLevelToUI(id, level) {
 
   // Output card (room view)
   const card = app.querySelector(`.output-card[data-output-id="${id}"]`);
-  if (card && !card.querySelector('.slider').classList.contains('dragging')) {
+  if (card && card.dataset.switch === '1') {
+    // Switch card (fireplaces): reflect on/off state.
     card.classList.toggle('on', pct > 0);
-    card.querySelector('.output-level').textContent = pct + '%';
-    card.querySelector('.slider-fill').style.width = pct + '%';
-    card.querySelector('.slider-thumb').style.left = pct + '%';
+    const sw = card.querySelector('.output-switch');
+    if (sw) {
+      sw.classList.toggle('on', pct > 0);
+      sw.setAttribute('aria-checked', pct > 0 ? 'true' : 'false');
+    }
     updateRoomSummary(id);
+  } else if (card) {
+    const slider = card.querySelector('.slider');
+    if (slider && !slider.classList.contains('dragging')) {
+      card.classList.toggle('on', pct > 0);
+      card.querySelector('.output-level').textContent = pct + '%';
+      card.querySelector('.slider-fill').style.width = pct + '%';
+      card.querySelector('.slider-thumb').style.left = pct + '%';
+      updateRoomSummary(id);
+    }
   }
 
   // Home summary counter
