@@ -75,6 +75,37 @@ function fireplaceOnCount() {
   return fireplaceOutputs().filter(o => isOn(o.id)).length;
 }
 
+// ---------- Hub summary helpers ----------
+function lightsOnCount() {
+  const fpIds = new Set(fireplaceOutputs().map(o => o.id));
+  return [...STATE.entries()].filter(([id, v]) => v > 0 && !fpIds.has(id)).length;
+}
+// Rooms with lights on -> compact chips for the primary tile.
+function lightsRoomChips() {
+  const rooms = ROOMS.rooms
+    .filter(r => r.slug !== 'fireplaces')
+    .map(r => ({ name: r.name, on: roomOnCount(r) }))
+    .filter(r => r.on > 0)
+    .sort((a, b) => b.on - a.on)
+    .slice(0, 4);
+  if (!rooms.length) return '<span class="bt-room-chip" style="opacity:.6">Everything off</span>';
+  return rooms.map(r => `<span class="bt-room-chip">${escapeHtml(r.name)} <b>${r.on}</b></span>`).join('');
+}
+// One scene-level line — counts SYSTEMS active, not rooms/lights (which the
+// tiles already show). Additive, not redundant.
+function hubSummaryText() {
+  const lon = lightsOnCount();
+  const fon = fireplaceOnCount();
+  const { playing } = musicPlayingCount();
+  if (lon === 0 && fon === 0 && playing === 0) return 'The house is quiet';
+  const systems = (lon > 0 ? 1 : 0) + (fon > 0 ? 1 : 0) + (playing > 0 ? 1 : 0);
+  const names = [];
+  if (lon > 0) names.push('lights');
+  if (fon > 0) names.push('fireplaces');
+  if (playing > 0) names.push('music');
+  return `<b>${systems}</b> ${systems === 1 ? 'system' : 'systems'} active · ${names.join(', ')}`;
+}
+
 // ---------- WebSocket ----------
 
 function wsIsOpen() {
@@ -190,8 +221,9 @@ function route() {
   const hash = location.hash.slice(1) || '/';
   currentRoute = hash;
   // Any route change: tear down modules we might be leaving.
+  // (Voice is intentionally NOT torn down here — the dock is persistent and the
+  //  session should survive navigation so you can keep talking anywhere.)
   if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
-  if (hash !== '/voice' && window.Voice && Voice.isActive()) Voice.teardown();
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();
@@ -214,9 +246,6 @@ function route() {
   } else if (hash === '/fireplaces') {
     Music.teardown();
     renderFireplaces();
-  } else if (hash === '/voice') {
-    Music.teardown();
-    renderVoice();
   } else if (hash.startsWith('/room/')) {
     Music.teardown();
     const id = parseInt(hash.split('/')[2], 10);
@@ -242,111 +271,87 @@ function renderHub() {
   const totalRoomsOn = ROOMS.rooms.filter(r => r.slug !== 'fireplaces' && roomOnCount(r) > 0).length;
   const { playing: musicPlaying, total: musicTotal } = musicPlayingCount();
 
+  const anyLive = totalOn > 0 || fireplaceOnCount() > 0 || musicPlaying > 0;
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
   app.innerHTML = `
-    <div class="topbar">
-      <div>
-        <div class="topbar-title">Berg Castle</div>
-        <span class="topbar-sub">Home</span>
+    <div class="hub-head fade-in">
+      <div class="hub-head-row">
+        <div>
+          <div class="hub-greeting">${greeting}</div>
+          <div class="hub-place">Berg Castle</div>
+        </div>
+        <div class="conn-badge" id="conn-badge"><span class="dot"></span><span id="conn-label">Connecting</span></div>
       </div>
-      <div class="conn-badge" id="conn-badge">
-        <span class="dot"></span>
-        <span id="conn-label">Connecting</span>
-      </div>
+      <div class="hub-summary-line" id="hub-summary-line">${hubSummaryText()}</div>
     </div>
 
-    <div class="hub-grid fade-in">
-      <button class="hub-tile hub-music" data-nav="/music">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18V5l12-2v13"/>
-            <circle cx="6" cy="18" r="3"/>
-            <circle cx="18" cy="16" r="3"/>
-          </svg>
+    <div class="bento fade-in">
+      <button class="bento-tile b-lights ${totalOn > 0 ? 'active' : ''}" data-nav="/lights" style="--i:0">
+        <div class="bt-top">
+          <span class="bt-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3v1h6v-1c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"/></svg>
+          </span>
+          ${totalOn > 0 ? `<span class="bt-count">${totalOn}</span>` : ''}
         </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Music</div>
-          <div class="hub-tile-sub">${musicTotal === 0 ? 'Sonos · loading' : musicPlaying === 0 ? `${musicTotal} zones · silent` : `${musicPlaying} playing · ${musicTotal} zones`}</div>
-        </div>
-        ${musicPlaying > 0 ? `<div class="hub-tile-badge hub-badge-music">${musicPlaying}</div>` : ''}
-      </button>
-
-      <button class="hub-tile hub-lights" data-nav="/lights">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3v1h6v-1c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"/>
-          </svg>
-        </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Lights</div>
-          <div class="hub-tile-sub">${totalOn === 0 ? 'All off' : `${totalOn} on · ${totalRoomsOn} ${totalRoomsOn === 1 ? 'room' : 'rooms'}`}</div>
-        </div>
-        ${totalOn > 0 ? `<div class="hub-tile-badge">${totalOn}</div>` : ''}
-      </button>
-
-      <button class="hub-tile hub-intercom" data-nav="/intercom">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <path d="M12 19v3M8 22h8"/>
-          </svg>
-        </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Intercom</div>
-          <div class="hub-tile-sub">Broadcast to any zone</div>
+        <div class="bt-rooms" id="hub-lights-rooms">${lightsRoomChips()}</div>
+        <div class="bt-foot">
+          <div class="bt-title">Lights</div>
+          <div class="bt-sub">${totalOn === 0 ? 'All off' : `${totalOn} on · ${totalRoomsOn} ${totalRoomsOn === 1 ? 'room' : 'rooms'}`}</div>
         </div>
       </button>
 
-      <button class="hub-tile hub-climate" data-nav="/climate">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 1 1 4 0z"/>
-            <line x1="12" y1="8" x2="12" y2="14"/>
-          </svg>
+      <button class="bento-tile b-music ${musicPlaying > 0 ? 'active' : ''}" data-nav="/music" style="--i:1">
+        <div class="bt-top">
+          <span class="bt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+          ${musicPlaying > 0 ? `<span class="bt-count">${musicPlaying}</span>` : ''}
         </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Climate</div>
-          <div class="hub-tile-sub" id="hub-climate-sub">Loading zones…</div>
+        <div class="bt-foot">
+          <div class="bt-title">Music</div>
+          <div class="bt-sub" id="hub-music-sub">${musicTotal === 0 ? 'Loading' : musicPlaying === 0 ? 'Silent' : `${musicPlaying} playing`}</div>
         </div>
       </button>
 
-      <button class="hub-tile hub-voice" data-nav="/voice">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <path d="M12 19v3M8 22h8"/>
-          </svg>
+      <button class="bento-tile b-fire ${fireplaceOnCount() > 0 ? 'active' : ''}" data-nav="/fireplaces" style="--i:2">
+        <div class="bt-top">
+          <span class="bt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 3-1 4-2 6s0 4 2 4 3-2 2-4c2 1 3 3 3 5a5 5 0 0 1-10 0c0-3 2-5 3-7 1-1.5 2-2.5 2-4z"/></svg></span>
+          ${fireplaceOnCount() > 0 ? `<span class="bt-count">${fireplaceOnCount()}</span>` : ''}
         </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Voice</div>
-          <div class="hub-tile-sub">Talk to the house</div>
+        <div class="bt-foot">
+          <div class="bt-title">Fireplaces</div>
+          <div class="bt-sub" id="hub-fire-sub">${fireplaceOnCount() === 0 ? 'All off' : `${fireplaceOnCount()} lit`}</div>
         </div>
       </button>
 
-      <button class="hub-tile hub-fireplaces" data-nav="/fireplaces">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2c1 3-1 4-2 6s0 4 2 4 3-2 2-4c2 1 3 3 3 5a5 5 0 0 1-10 0c0-3 2-5 3-7 1-1.5 2-2.5 2-4z"/>
-          </svg>
+      <button class="bento-tile b-climate" data-nav="/climate" style="--i:3">
+        <div class="bt-top">
+          <span class="bt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 1 1 4 0z"/><line x1="12" y1="8" x2="12" y2="14"/></svg></span>
         </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Fireplaces</div>
-          <div class="hub-tile-sub" id="hub-fireplaces-sub">${fireplaceOnCount() === 0 ? 'All off' : `${fireplaceOnCount()} of ${FIREPLACE_ROOM_ID ? fireplaceOutputs().length : 4} on`}</div>
+        <div class="bt-foot">
+          <div class="bt-title">Climate</div>
+          <div class="bt-sub" id="hub-climate-sub">Loading</div>
         </div>
-        ${fireplaceOnCount() > 0 ? `<div class="hub-tile-badge hub-badge-fire">${fireplaceOnCount()}</div>` : ''}
       </button>
 
-      <button class="hub-tile hub-cameras" data-nav="/cameras">
-        <div class="hub-tile-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 7l-7 5 7 5V7z"/>
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-          </svg>
+      <button class="bento-tile b-intercom" data-nav="/intercom" style="--i:4">
+        <div class="bt-top">
+          <span class="bt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3M8 22h8"/></svg></span>
         </div>
-        <div class="hub-tile-body">
-          <div class="hub-tile-title">Cameras</div>
-          <div class="hub-tile-sub">5 feeds · coming soon</div>
+        <div class="bt-foot">
+          <div class="bt-title">Intercom</div>
+          <div class="bt-sub">Broadcast</div>
+        </div>
+      </button>
+
+      <button class="bento-tile b-cameras" data-nav="/cameras" style="--i:5">
+        <div class="bt-top">
+          <span class="bt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></span>
+          <span class="bt-soon">Soon</span>
+        </div>
+        <div class="bt-foot">
+          <div class="bt-title">Cameras</div>
+          <div class="bt-sub">5 feeds</div>
         </div>
       </button>
     </div>
@@ -379,64 +384,53 @@ function renderHub() {
   }
 }
 
+/** Small helper: set the count chip on a bento tile + toggle active glow. */
+function paintBentoCount(tile, count) {
+  if (!tile) return;
+  tile.classList.toggle('active', count > 0);
+  let chip = tile.querySelector('.bt-count');
+  const top = tile.querySelector('.bt-top');
+  if (count > 0) {
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'bt-count';
+      if (top) top.appendChild(chip);
+    }
+    chip.textContent = count;
+  } else if (chip) {
+    chip.remove();
+  }
+}
+
 /** Update the Hub's Climate tile in place. Safe to call at any time. */
 function paintHubClimateTile() {
   if (currentRoute !== '/' && currentRoute !== '') return;
-  const tile = app.querySelector('.hub-climate');
+  const tile = app.querySelector('.b-climate');
   if (!tile) return;
-  const sub = tile.querySelector('.hub-tile-sub');
+  const sub = document.getElementById('hub-climate-sub');
   const s = Climate.summary();
   if (s.count === 0) {
-    if (sub) sub.textContent = 'Ecobee bridge offline';
+    if (sub) sub.textContent = 'Offline';
     return;
   }
   const parts = [];
   if (s.avgTemp != null) parts.push(`${Math.round(s.avgTemp)}° avg`);
-  parts.push(`${s.count} zones`);
-  if (s.running > 0) parts.push(`${s.running} running`);
+  if (s.running > 0) parts.push(`${s.running} running`); else parts.push(`${s.count} zones`);
   if (sub) sub.textContent = parts.join(' · ');
-
-  // Badge shows number of running zones (like Music shows playing count)
-  let badge = tile.querySelector('.hub-tile-badge');
-  if (s.running > 0) {
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'hub-tile-badge hub-badge-climate';
-      tile.appendChild(badge);
-    }
-    badge.textContent = s.running;
-  } else if (badge) {
-    badge.remove();
-  }
+  paintBentoCount(tile, s.running);
 }
 
 /** Update the Hub's Music tile in place. Safe to call at any time. */
 function paintHubMusicTile() {
   if (currentRoute !== '/' && currentRoute !== '') return;
-  const tile = app.querySelector('.hub-music');
+  const tile = app.querySelector('.b-music');
   if (!tile) return;
-
   const { playing, total } = musicPlayingCount();
-  const sub = tile.querySelector('.hub-tile-sub');
+  const sub = document.getElementById('hub-music-sub');
   if (sub) {
-    sub.textContent = total === 0
-      ? 'Sonos · unreachable'
-      : playing === 0
-        ? `${total} zones · silent`
-        : `${playing} playing · ${total} ${total === 1 ? 'zone' : 'zones'}`;
+    sub.textContent = total === 0 ? 'Unreachable' : playing === 0 ? 'Silent' : `${playing} playing`;
   }
-
-  let badge = tile.querySelector('.hub-tile-badge');
-  if (playing > 0) {
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'hub-tile-badge hub-badge-music';
-      tile.appendChild(badge);
-    }
-    badge.textContent = playing;
-  } else if (badge) {
-    badge.remove();
-  }
+  paintBentoCount(tile, playing);
 }
 
 // ---------- Music ----------
@@ -1262,27 +1256,29 @@ function applyLevelToUI(id, level) {
     }
   }
 
-  // Hub Fireplaces tile (live count).
-  const fireTile = app.querySelector('.hub-fireplaces');
+  // Hub bento tiles (live) — Fireplaces + Lights + the at-a-glance line.
+  const fireTile = app.querySelector('.b-fire');
   if (fireTile) {
     const fon = fireplaceOnCount();
-    const ftotal = fireplaceOutputs().length || 4;
-    const sub = fireTile.querySelector('.hub-tile-sub');
-    if (sub) sub.textContent = fon === 0 ? 'All off' : `${fon} of ${ftotal} on`;
-    let badge = fireTile.querySelector('.hub-tile-badge');
-    if (fon > 0) {
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'hub-tile-badge hub-badge-fire';
-        fireTile.appendChild(badge);
-      }
-      badge.textContent = fon;
-    } else if (badge) {
-      badge.remove();
-    }
+    const sub = document.getElementById('hub-fire-sub');
+    if (sub) sub.textContent = fon === 0 ? 'All off' : `${fon} lit`;
+    paintBentoCount(fireTile, fon);
   }
+  const lightsTile = app.querySelector('.b-lights');
+  if (lightsTile) {
+    const fpIds2 = new Set(fireplaceOutputs().map(o => o.id));
+    const lon = [...STATE.entries()].filter(([oid, v]) => v > 0 && !fpIds2.has(oid)).length;
+    const roomsOn = ROOMS.rooms.filter(r => r.slug !== 'fireplaces' && roomOnCount(r) > 0).length;
+    const sub = lightsTile.querySelector('.bt-sub');
+    if (sub) sub.textContent = lon === 0 ? 'All off' : `${lon} on · ${roomsOn} ${roomsOn === 1 ? 'room' : 'rooms'}`;
+    paintBentoCount(lightsTile, lon);
+  }
+  const summaryLine = document.getElementById('hub-summary-line');
+  if (summaryLine) summaryLine.innerHTML = hubSummaryText();
+  const roomsEl = document.getElementById('hub-lights-rooms');
+  if (roomsEl) roomsEl.innerHTML = lightsRoomChips();
 
-  // Home summary counter
+  // Home summary counter (Lights page)
   const summaryNum = app.querySelector('.summary-num');
   const summaryLabel = app.querySelector('.summary-label');
   if (summaryNum) {
@@ -1353,6 +1349,7 @@ async function boot() {
   await Promise.all([fetchRooms(), fetchScenes(), fetchState()]);
   route();
   connectWS();
+  if (window.mountVoiceDock) mountVoiceDock();
 }
 
 window.setConn = setConn;

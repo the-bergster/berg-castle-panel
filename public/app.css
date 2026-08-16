@@ -459,79 +459,139 @@ a { color: inherit; text-decoration: none; }
 .room-scene:active { transform: scale(0.94); }
 
 /* ---------- Hub (home landing) ---------- */
-.hub-grid {
+/* ---------- Hub header (greeting + at-a-glance) ---------- */
+.hub-head {
+  padding: 26px 20px 8px;
+}
+@media (min-width: 560px) { .hub-head { padding: 34px 24px 10px; } }
+.hub-head-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.hub-greeting {
+  font-size: 14px; font-weight: 500; letter-spacing: 0.01em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.hub-place {
+  font-size: 28px; font-weight: 650; letter-spacing: -0.02em;
+  color: var(--text);
+}
+@media (min-width: 560px) { .hub-place { font-size: 34px; } }
+.hub-summary-line {
+  margin-top: 18px;
+  font-size: 15px; color: var(--text-mid); letter-spacing: 0.005em;
+}
+.hub-summary-line b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ---------- Bento grid ---------- */
+.bento {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  padding: 16px 16px 24px;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 116px;
+  gap: 12px;
+  padding: 14px 20px 20px;
 }
 @media (min-width: 560px) {
-  .hub-grid { grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; }
+  .bento { grid-template-columns: repeat(4, 1fr); grid-auto-rows: 126px; gap: 14px; padding: 16px 24px 28px; }
 }
+/* Lights is the primary tile — full-width hero on mobile, 2x2 on wide. */
+.b-lights { grid-column: 1 / -1; grid-row: span 2; }
+@media (min-width: 560px) { .b-lights { grid-column: span 2; grid-row: span 2; } }
+/* Cameras closes the last row cleanly (spans both cols on mobile). */
+.b-cameras { grid-column: 1 / -1; }
+@media (min-width: 560px) { .b-cameras { grid-column: span 2; } }
 
-.hub-tile {
+.bento-tile {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 128px;
-  padding: 22px 22px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 15px 16px;
   background: var(--bg-2);
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 20px;
   cursor: pointer;
-  transition: all var(--dur) var(--ease);
   overflow: hidden;
   text-align: left;
   color: var(--text);
+  transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  animation: bento-in var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
 }
-.hub-tile::before {
-  content: "";
-  position: absolute; inset: 0;
-  background: radial-gradient(120% 80% at 100% 0%, rgba(255,184,77,0.10) 0%, transparent 60%);
-  opacity: 0; transition: opacity var(--dur) var(--ease);
-  pointer-events: none;
-}
-.hub-tile:hover { border-color: var(--line-strong); transform: translateY(-2px); }
-.hub-tile:hover::before { opacity: 1; }
-.hub-tile:active { transform: scale(0.985); }
+@keyframes bento-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.bento-tile:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+.bento-tile:active { transform: scale(0.98); }
 
-.hub-tile-icon {
-  flex: 0 0 auto;
-  width: 56px; height: 56px;
+/* Tinted wash that fades in when a tile is active (no neon glow). */
+.bento-tile::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  opacity: 0; transition: opacity var(--dur) var(--ease);
+  background: radial-gradient(130% 90% at 100% 0%, var(--tile-wash, rgba(255,184,77,0.12)) 0%, transparent 62%);
+}
+.bento-tile.active::before { opacity: 1; }
+.bento-tile.active { border-color: var(--tile-edge, rgba(255,184,77,0.35)); }
+
+.bt-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.bt-icon {
+  width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-3);
-  border-radius: 16px;
-  color: var(--accent-bright);
+  border-radius: 13px;
+  color: var(--tile-color, var(--accent-bright));
 }
-.hub-tile-icon svg { width: 28px; height: 28px; }
+.bt-icon svg { width: 24px; height: 24px; }
+.b-lights .bt-icon { width: 52px; height: 52px; border-radius: 16px; }
+.b-lights .bt-icon svg { width: 28px; height: 28px; }
 
-.hub-tile-body { flex: 1; min-width: 0; }
-.hub-tile-title {
-  font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
-  margin-bottom: 4px;
-}
-.hub-tile-sub {
-  font-size: 13px; color: var(--text-dim); letter-spacing: 0.01em;
-}
-
-.hub-tile-badge {
-  position: absolute; top: 18px; right: 20px;
-  min-width: 34px; height: 26px; padding: 0 10px;
+.bt-count {
+  min-width: 30px; height: 26px; padding: 0 10px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent);
-  color: #1a1200;
+  background: var(--tile-color, var(--accent));
+  color: #14140f;
   font-size: 13px; font-weight: 700;
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
 }
-.hub-tile-badge:empty, .hub-tile:has(.hub-tile-badge:empty) .hub-tile-badge { display: none; }
+.bt-soon {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dimmer);
+  border: 1px solid var(--line);
+  padding: 3px 7px; border-radius: 999px;
+}
 
-.hub-music .hub-tile-icon { color: #7ec6ff; background: rgba(126,198,255,0.08); }
-.hub-lights .hub-tile-icon { color: var(--accent-bright); background: rgba(255,184,77,0.08); }
-.hub-cameras .hub-tile-icon { color: #a78bfa; background: rgba(167,139,250,0.08); }
-.hub-fireplaces .hub-tile-icon { color: #ff7a3c; background: rgba(255,122,60,0.09); }
-.hub-badge-fire { background: linear-gradient(90deg, #ff5a1f, #ff9d4d) !important; }
+.bt-foot { }
+.bt-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 2px; }
+.b-lights .bt-title { font-size: 22px; }
+.bt-sub { font-size: 12.5px; color: var(--text-mid); }
+.b-lights .bt-sub { font-size: 14px; }
+
+/* Inactive tiles: neutral icon (colour signifies STATE, not category). */
+.bento-tile:not(.active) .bt-icon { color: var(--text-mid); }
+
+/* Lights primary: room chips that give the big tile a reason to be big. */
+.b-lights { justify-content: flex-start; gap: 14px; }
+.b-lights .bt-rooms {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 0;
+}
+.b-lights .bt-foot { margin-top: auto; }
+.b-lights .bt-room-chip {
+  font-size: 12px; color: var(--text-mid);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 999px;
+  white-space: nowrap;
+}
+.b-lights .bt-room-chip b { color: var(--accent-bright); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Per-tile accent colours (icon + active wash) */
+.b-lights   { --tile-color: var(--accent-bright); --tile-wash: rgba(255,184,77,0.14); --tile-edge: rgba(255,184,77,0.38); }
+.b-music    { --tile-color: #7ec6ff; --tile-wash: rgba(126,198,255,0.14); --tile-edge: rgba(126,198,255,0.38); }
+.b-fire     { --tile-color: #ff8a4c; --tile-wash: rgba(255,122,60,0.16); --tile-edge: rgba(255,122,60,0.4); }
+.b-climate  { --tile-color: #6ee7b7; --tile-wash: rgba(110,231,183,0.14); --tile-edge: rgba(110,231,183,0.38); }
+.b-intercom { --tile-color: var(--danger); --tile-wash: rgba(255,106,92,0.12); }
+.b-cameras  { --tile-color: #a78bfa; --tile-wash: rgba(167,139,250,0.12); }
+.b-cameras .bt-icon, .b-intercom { color: var(--text-mid); }
 
 /* ---------- Cameras (placeholder shell) ---------- */
 .cameras-grid {
@@ -973,7 +1033,7 @@ a { color: inherit; text-decoration: none; }
 .intercom-secondary:hover { border-color: var(--text-mid); color: var(--text); }
 
 /* Hub Intercom tile tint */
-.hub-intercom .hub-tile-icon { color: var(--danger); background: rgba(255,106,92,0.08); }
+
 
 /* ---------- Intercom: restore toggle ---------- */
 .intercom-toggle {
