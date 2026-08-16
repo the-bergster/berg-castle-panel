@@ -224,6 +224,7 @@ function route() {
   // (Voice is intentionally NOT torn down here — the dock is persistent and the
   //  session should survive navigation so you can keep talking anywhere.)
   if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
+  document.body.classList.toggle('on-hub', hash === '/' || hash === '');
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();
@@ -276,6 +277,7 @@ function renderHub() {
   const greeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   app.innerHTML = `
+    <div class="hub-root">
     <div class="hub-head fade-in">
       <div class="hub-head-row">
         <div>
@@ -354,6 +356,7 @@ function renderHub() {
           <div class="bt-sub">5 feeds</div>
         </div>
       </button>
+    </div>
     </div>
   `;
 

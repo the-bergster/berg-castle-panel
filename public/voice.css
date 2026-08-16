@@ -4,6 +4,9 @@
 
 /* Give every page room so the dock never covers content. */
 body { padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 8px); }
+/* The hub owns its own height (100dvh, dock space reserved internally) —
+   no body padding, no scroll. */
+body.on-hub { padding-bottom: 0; overflow: hidden; }
 
 #voice-dock {
   position: fixed;
@@ -114,23 +117,6 @@ body { padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 8px); }
   0%,100% { transform: scale(1); }
   50% { transform: scale(1.08); }
 }
-
-/* Live caption bubble above the dock */
-.vd-caption {
-  pointer-events: none;
-  max-width: 92vw;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--text-mid);
-  text-align: center;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
-  max-height: 2.8em;
-  overflow: hidden;
-}
-.vd-caption.show { opacity: 1; transform: translateY(0); }
 
 /* When the session is live, the dock lifts into a clearer anchored bar. */
 #voice-dock.vd-live, #voice-dock.vd-connecting, #voice-dock.vd-speaking {

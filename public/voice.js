@@ -17,10 +17,9 @@ const Voice = (() => {
   let listeners = new Set();
   let lastError = null;
   let speaking = false; // model is talking
-  let lastCaption = '';
 
   function emit() {
-    for (const fn of listeners) { try { fn(status, { error: lastError, speaking, caption: lastCaption }); } catch {} }
+    for (const fn of listeners) { try { fn(status, { error: lastError, speaking }); } catch {} }
   }
   function setStatus(s, err) { status = s; lastError = err || null; emit(); }
 
@@ -76,15 +75,6 @@ const Voice = (() => {
       if (speaking) { speaking = false; emit(); }
     }
 
-    // Live caption from model transcript.
-    if (msg.type === 'response.output_audio_transcript.delta' && msg.delta) {
-      lastCaption = (lastCaption + msg.delta).slice(-140);
-      emit();
-    } else if (msg.type === 'response.created') {
-      lastCaption = '';
-      emit();
-    }
-
     // Tool call.
     if (msg.type === 'response.function_call_arguments.done') {
       let args = {};
@@ -111,7 +101,7 @@ const Voice = (() => {
     try { if (dc) dc.close(); } catch {}
     try { if (pc) pc.close(); } catch {}
     try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch {}
-    dc = null; pc = null; micStream = null; speaking = false; lastCaption = '';
+    dc = null; pc = null; micStream = null; speaking = false;
     if (status !== 'error') setStatus('idle');
   }
 
@@ -147,13 +137,11 @@ function mountVoiceDock() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </span>
     </button>
-    <div class="vd-caption" id="vd-caption"></div>
   `;
   document.body.appendChild(dock);
 
   const btn = dock.querySelector('#vd-btn');
   const label = dock.querySelector('#vd-label');
-  const caption = dock.querySelector('#vd-caption');
 
   btn.addEventListener('click', () => Voice.toggle());
 
@@ -166,8 +154,6 @@ function mountVoiceDock() {
       : s === 'connecting' ? 'Connecting…'
       : s === 'error' ? 'Tap to retry'
       : 'Talk to the house';
-    caption.textContent = (s === 'live' && meta.caption) ? meta.caption : '';
-    caption.classList.toggle('show', !!(s === 'live' && meta.caption));
   });
 }
 window.mountVoiceDock = mountVoiceDock;
