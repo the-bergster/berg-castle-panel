@@ -463,45 +463,55 @@ a { color: inherit; text-decoration: none; }
 .hub-root {
   display: flex;
   flex-direction: column;
+  /* Real usable height = viewport minus the dock (which is fixed at the very
+     bottom and includes its own safe-bottom padding). Using min-height keeps
+     the column from ever exceeding the screen -> no scroll, tiles distribute
+     into whatever's left. */
   height: 100dvh;
-  /* leave room for the persistent voice dock */
-  padding-bottom: calc(var(--dock-h, 76px) + var(--safe-bottom) + 4px);
+  height: 100svh;
+  padding-bottom: calc(var(--dock-pill) + var(--dock-gap-bottom) + var(--safe-bottom) + var(--dock-scrim-top) + 20px);
+  overflow: hidden;
 }
 
 .hub-head {
   flex: 0 0 auto;
-  padding: max(20px, calc(14px + var(--safe-top))) 20px 6px;
+  padding: calc(6px + var(--safe-top)) 20px 2px;
 }
-@media (min-width: 560px) { .hub-head { padding: 34px 24px 10px; } }
+@media (min-width: 560px) { .hub-head { padding: calc(14px + var(--safe-top)) 24px 6px; } }
 .hub-head-row {
-  display: flex; align-items: flex-start; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between;
 }
 .hub-greeting {
-  font-size: 14px; font-weight: 500; letter-spacing: 0.01em;
+  font-size: 13px; font-weight: 500; letter-spacing: 0.01em;
   color: var(--text-dim);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .hub-place {
-  font-size: 28px; font-weight: 650; letter-spacing: -0.02em;
+  font-size: 26px; font-weight: 650; letter-spacing: -0.02em;
   color: var(--text);
 }
 @media (min-width: 560px) { .hub-place { font-size: 34px; } }
 .hub-summary-line {
-  margin-top: 12px;
-  font-size: 14px; color: var(--text-mid); letter-spacing: 0.005em;
+  margin-top: 6px;
+  font-size: 13.5px; color: var(--text-mid); letter-spacing: 0.005em;
 }
 .hub-summary-line b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
 
 /* ---------- Bento grid: fills remaining height, fr rows, no scroll ---------- */
 .bento {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  height: 0;          /* force flex-basis to win over grid intrinsic min */
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  /* Lights hero = 2 units tall; then two rows of pairs; then Cameras. */
-  grid-template-rows: 1.15fr 1.15fr 1fr 1fr 0.82fr;
-  gap: 10px;
-  padding: 10px 20px 12px;
+  /* minmax(0,..) lets tracks compress below content min so nothing overflows
+     into the dock. 5 row-units: Lights hero (1-2), pairs (3-4), Cameras (5). */
+  grid-template-rows:
+    minmax(0, 0.82fr) minmax(0, 0.82fr)
+    minmax(0, 0.96fr) minmax(0, 0.96fr)
+    minmax(0, 0.84fr);
+  gap: 9px;
+  padding: 6px 20px 8px;
 }
 @media (min-width: 560px) {
   .bento {
@@ -520,10 +530,11 @@ a { color: inherit; text-decoration: none; }
 .bento-tile {
   position: relative;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 13px 15px;
+  padding: 12px 14px;
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -550,13 +561,13 @@ a { color: inherit; text-decoration: none; }
 
 .bt-top { display: flex; align-items: flex-start; justify-content: space-between; }
 .bt-icon {
-  width: 44px; height: 44px;
+  width: 38px; height: 38px;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-3);
-  border-radius: 13px;
+  border-radius: 12px;
   color: var(--tile-color, var(--accent-bright));
 }
-.bt-icon svg { width: 24px; height: 24px; }
+.bt-icon svg { width: 21px; height: 21px; }
 .b-lights .bt-icon { width: 52px; height: 52px; border-radius: 16px; }
 .b-lights .bt-icon svg { width: 28px; height: 28px; }
 
@@ -586,13 +597,15 @@ a { color: inherit; text-decoration: none; }
 .bento-tile:not(.active) .bt-icon { color: var(--text-mid); }
 
 /* Lights primary: room chips that give the big tile a reason to be big. */
-.b-lights { justify-content: flex-start; gap: 12px; }
+.b-lights { justify-content: flex-start; gap: 10px; }
+.b-lights .bt-top { flex: 0 0 auto; }
 .b-lights .bt-rooms {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 0;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px;
+  flex: 1 1 auto;      /* chips absorb the middle space — no dead gap */
+  min-height: 0;
+  overflow: hidden;
 }
-/* Label sits just under the chips, not pinned to the bottom — kills dead space. */
-.b-lights .bt-foot { margin-top: 2px; }
+.b-lights .bt-foot { flex: 0 0 auto; margin-top: 0; }
 .b-lights .bt-room-chip {
   font-size: 12px; color: var(--text-mid);
   background: var(--bg-3);

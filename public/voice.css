@@ -1,12 +1,24 @@
 /* Persistent voice dock — pinned to the bottom of every screen. */
 
-:root { --dock-h: 76px; }
+/* Dock geometry (single source of truth so the hub can reserve exact space).
+   scrim-top + pill(56) + gap-bottom, plus the device safe-bottom inset. */
+:root {
+  --dock-scrim-top: 16px;
+  --dock-pill: 56px;
+  --dock-gap-bottom: 12px;
+  --dock-h: calc(var(--dock-scrim-top) + var(--dock-pill) + var(--dock-gap-bottom) + var(--safe-bottom));
+}
 
 /* Give every page room so the dock never covers content. */
 body { padding-bottom: calc(var(--dock-h) + var(--safe-bottom) + 8px); }
-/* The hub owns its own height (100dvh, dock space reserved internally) —
-   no body padding, no scroll. */
-body.on-hub { padding-bottom: 0; overflow: hidden; }
+/* The hub owns its own height (100svh) and handles safe-area insets itself
+   (header pads for the notch, dock pads for the home indicator). So the body's
+   own safe-area padding must be zeroed here, otherwise it double-applies — which
+   pushed content down (top gap) AND clipped the bottom row under the dock. */
+body.on-hub {
+  padding: 0;
+  overflow: hidden;
+}
 
 #voice-dock {
   position: fixed;
@@ -17,7 +29,7 @@ body.on-hub { padding-bottom: 0; overflow: hidden; }
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 22px 16px calc(14px + var(--safe-bottom));
+  padding: var(--dock-scrim-top) 16px calc(var(--dock-gap-bottom) + var(--safe-bottom));
   pointer-events: none;
   background: linear-gradient(to top, var(--bg-0) 0%, var(--bg-0) 46%, rgba(8,8,10,0.92) 66%, rgba(8,8,10,0.6) 82%, transparent 100%);
 }
