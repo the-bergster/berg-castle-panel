@@ -2,6 +2,26 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-17 — Owner-only admin panel + one-tap entry (Cloudflare Access user provisioning)
+
+**Context:** Simon asked for a slicker way to provision new house users than hand-editing the Cloudflare Access policy. Green-lit "basic scope, with a view to holding more," plus an elegant one-click way in — he couldn't reach the `/admin` URL from the installed PWA.
+
+**Same session, earlier:** gave the voice agent a name. `voice.js` system prompt now opens "You are Jony, the voice of Berg Castle…" and tells it to answer "Jony" if asked who it is. (Separate agent from me — shares the name, not the memory.)
+
+**What got built:**
+- **`admin.js`** — owner-gated backend module. Every `/api/admin/*` route checks the `Cf-Access-Authenticated-User-Email` header CF injects on the authenticated tunnel; only `me@simonberg.ai` passes (others get 403). Routes: `GET /whoami`, `GET /users`, `POST /users` (add), `DELETE /users` (remove). Loads the CF admin token from `.secrets/cloudflare/berg-castle.env`. A loopback-only `ADMIN_ALLOW_LOCAL=1` dev bypass exists for testing; it never triggers behind CF.
+- **`public/admin.html`** — standalone dark page matching the panel's design tokens. Lists current access, invite field, per-guest Remove, owner badge (owners can't be removed). Self-contained; no dependency on the SPA bundle.
+- **Hub gear ⚙️** — `public/app.js` adds a gear button in the hub header that's hidden by default and only revealed after a `/api/admin/whoami` check confirms the owner. One tap from the PWA home screen → `/admin`. CSS in `public/app.css` (`.hub-gear`, `.hub-head-actions`).
+- **`server.js`** — requires `admin`, serves `/admin`, delegates `/api/admin/*`.
+
+**The gotcha (caught by smoke test):** the "Household" policy is a *reusable* (account-level) Access policy. Writing it through the app-scoped endpoint `/access/apps/{app}/policies/{id}` returns CF error **12130** (`can not update reusable policies through this endpoint`). Fix: use the account-level reusable endpoint `/access/policies/{id}` for both GET and PUT. Policy id is the same (`034b8d96-…`); only the path differs. Reads worked on the old path, writes didn't — exactly the kind of half-broken that only shows under a real write.
+
+**Verified:** full add→remove round-trip against the live CF policy — added a throwaway address, CF accepted, removed it, list returned to exactly `me@simonberg.ai` + `dovile.berg@gmail.com` with no residue. Restarted via launchd, `/admin` serves 200.
+
+**Future-facing:** `/admin` is built to extend (tunnel health, restart, recordings can drop in beside Users). The `/api/admin/users` endpoint also makes a future guarded `provision_user` voice tool one step away — kept out for now; would gate it confirm-only so a spoken "add Dave" can't silently grant house access.
+
+**Commit:** `6a4e926` on `the-bergster/berg-castle-panel`.
+
 ## 2026-08-02 (evening) — Merge `sonos-parity` (Opus 5.0) into intercom branch
 
 **What arrived:** Opus 5.0's `sonos-parity` branch, built from `3af8046` in parallel with the intercom work. 5 commits, 24 files, +7332/−539. Full rewrite of the Sonos half:
