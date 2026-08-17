@@ -145,15 +145,16 @@ function requesterEmail(req) {
   return String(email).trim().toLowerCase();
 }
 
+// Owner gate. The ONLY way to pass is a genuine Cloudflare Access identity header
+// whose email is in OWNER_EMAILS. There is deliberately NO loopback/dev bypass:
+// the panel runs behind cloudflared on the same host, so every request arrives
+// from 127.0.0.1 at the socket level. A loopback bypass would therefore grant
+// owner rights to EVERYONE on the household allow-list (this was the 2026-08-17
+// bug Simon caught). CF Access injects the header only on the authenticated
+// tunnel, and a remote client cannot spoof it, so the header is the sole gate.
 function isOwner(req) {
   const email = requesterEmail(req);
-  if (email && OWNER_EMAILS.has(email)) return true;
-  // Local dev bypass: only when explicitly opted in AND the request is loopback.
-  if (process.env.ADMIN_ALLOW_LOCAL === '1') {
-    const ra = (req.socket && req.socket.remoteAddress) || '';
-    if (ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1') return true;
-  }
-  return false;
+  return !!(email && OWNER_EMAILS.has(email));
 }
 
 // ---- Cloudflare API --------------------------------------------------------
