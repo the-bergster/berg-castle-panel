@@ -24,6 +24,7 @@ const sonosApi = require('./sonos/api');
 const intercom = require('./intercom');
 const climate = require('./climate');
 const voice = require('./voice');
+const admin = require('./admin');
 
 const PORT = 4321;
 const ROOMS_DATA = loadRooms();
@@ -354,6 +355,15 @@ function serveIndexHtml(res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
+
+  // ---- Owner-only admin (Cloudflare Access-gated) ----
+  if (req.method === 'GET' && pathname === '/admin') {
+    serveStatic(res, 'admin.html'); return;
+  }
+  if (pathname.startsWith('/api/admin/')) {
+    const handled = await admin.handle(req, res, pathname);
+    if (handled) return;
+  }
 
   // Routes
   if (req.method === 'GET' && (pathname === '/' || pathname === '/room' || pathname.startsWith('/room/'))) {
