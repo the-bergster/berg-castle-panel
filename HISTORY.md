@@ -22,6 +22,24 @@ _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
 **Commit:** `6a4e926` on `the-bergster/berg-castle-panel`.
 
+### Same day — invite email trigger (Resend + bergcastle.com sender)
+
+Adding a user was a silent allow-list edit — Cloudflare Access never emails anyone; the OTP code only fires when someone tries to log in. Simon wanted the add to trigger a real invite email. Built it Option B (branded Berg Castle sender).
+
+**What got built:**
+- `admin.js` now fires a branded invite via **Resend** after a successful add: from `Berg Castle <hello@bergcastle.com>`, dark-themed HTML matching the panel, a "Open Berg Castle" button → `home.bergcastle.com`, plus OTP + "Add to Home Screen" instructions. **Best-effort** — a send failure never blocks the allow-list add; the UI toast reports whether the invite actually went out (`invited` / `inviteReason`).
+- Reuses the shared Rhapsody Resend account (one API key, multiple domains). New domain `bergcastle.com` registered on Resend (id `c938adb8-9182-43f0-8689-84720de3f040`). Secrets: `.secrets/resend-bergcastle.env`.
+
+**DNS:** three records added in Cloudflare (zone `5c8b208f…`): DKIM `resend._domainkey` TXT, `send` MX → `feedback-smtp.us-east-1.amazonses.com`, `send` SPF TXT. My CF token is Access-only (no DNS write), and the token Simon dropped turned out to be an **R2 (S3) token** — wrong type, doesn't auth against the standard API (`6111 Invalid format for Authorization header`). Simon added the 3 records by hand in the dashboard. **Lesson: an R2 token is not a Cloudflare API token; for DNS you need the "Edit zone DNS" template token (no `cfat_` prefix).**
+
+**Verification lag:** records were live on the authoritative Cloudflare NS within ~1 min, but Resend's verifier sat on `pending` for ~20 min (it caches negative lookups; manual `/verify` pokes don't always force a fresh read). Not a fault — just slow. A 5-min isolated cron polled + auto-ran the live test on verify, then self-disabled.
+
+**🚨 OTP-link safety:** invites carry single-use OTP login links. Turned `click_tracking` OFF on the bergcastle.com Resend domain — same class of bug as the 2026-07-09 academy batch, where Resend link-rewriting let mail scanners burn single-use tokens before the human clicked. Never send auth/OTP links through a click-tracking domain.
+
+**First-send deliverability:** brand-new sending domain → landed in Simon's *Rhapsody* inbox spam, and the link got rewritten + red-flagged by **FortiMail** (`gw000090-eu.fortimail.com`), Rhapsody's corporate mail gateway — not a real "dangerous site," just the gateway being cautious about an unknown domain. Gaps found: **no DMARC** (biggest), no root SPF. TODO: add `_dmarc.bergcastle.com` TXT `v=DMARC1; p=none; rua=mailto:me@simonberg.ai`. Corporate gateways will always be fussier about a new consumer domain sending login links; for managed inboxes, sending from the already-warm `rhapsodymedia.ai` is an option (loses From-line branding, keeps body branding). **Verified working end-to-end via a non-corporate inbox (Simon's msh email) — add through `/admin` → invite email → tap through → OTP → in. "Worked perfectly."**
+
+**Commits:** `6a4e926` (panel) + follow-ups for the invite trigger.
+
 ## 2026-08-02 (evening) — Merge `sonos-parity` (Opus 5.0) into intercom branch
 
 **What arrived:** Opus 5.0's `sonos-parity` branch, built from `3af8046` in parallel with the intercom work. 5 commits, 24 files, +7332/−539. Full rewrite of the Sonos half:
