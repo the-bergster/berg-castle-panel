@@ -50,6 +50,88 @@ function loadCfEnv() {
 
 const CF = loadCfEnv();
 
+// ---- Resend (invite email) -------------------------------------------------
+
+const RESEND_SECRETS = path.join(
+  process.env.HOME || '/Users/jony',
+  '.openclaw/workspace/.secrets/resend-rhapsody.env',
+);
+
+function loadResendKey() {
+  try {
+    const txt = fs.readFileSync(RESEND_SECRETS, 'utf8');
+    const m = txt.match(/^\s*RESEND_API_KEY\s*=\s*(.+?)\s*$/m);
+    return m ? m[1] : '';
+  } catch (_) { return ''; }
+}
+
+const RESEND_KEY = loadResendKey();
+const INVITE_FROM = process.env.BERG_INVITE_FROM || 'Berg Castle <hello@bergcastle.com>';
+const PANEL_URL = 'https://home.bergcastle.com';
+
+// Send a branded "you've been given access" email. Best-effort: a send failure
+// never blocks the user-add (they're already on the allow-list either way).
+function sendInvite(toEmail) {
+  return new Promise((resolve) => {
+    if (!RESEND_KEY) { resolve({ sent: false, reason: 'no_resend_key' }); return; }
+    const subject = 'Your Berg Castle access is ready';
+    const html = inviteHtml();
+    const text = inviteText();
+    const body = JSON.stringify({ from: INVITE_FROM, to: [toEmail], subject, html, text });
+    const opts = {
+      hostname: 'api.resend.com', path: '/emails', method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 12000,
+    };
+    const r = https.request(opts, (resp) => {
+      let d = '';
+      resp.on('data', (c) => (d += c));
+      resp.on('end', () => {
+        let j = {};
+        try { j = JSON.parse(d || '{}'); } catch (_) {}
+        if (resp.statusCode >= 200 && resp.statusCode < 300 && j.id) {
+          resolve({ sent: true, id: j.id });
+        } else {
+          resolve({ sent: false, reason: (j.message || `http_${resp.statusCode}`) });
+        }
+      });
+    });
+    r.on('error', (e) => resolve({ sent: false, reason: e.message }));
+    r.on('timeout', () => { r.destroy(); resolve({ sent: false, reason: 'timeout' }); });
+    r.write(body);
+    r.end();
+  });
+}
+
+function inviteText() {
+  return [
+    "You've been given access to Berg Castle \u2014 Simon's smart home.",
+    '',
+    `Open it here: ${PANEL_URL}`,
+    '',
+    'Choose the email sign-in, enter this address, and you\'ll get a 6-digit code',
+    'in your inbox. Enter the code and you\'re in.',
+    '',
+    'On iPhone: after signing in, tap Share \u2192 Add to Home Screen to install the app.',
+  ].join('\n');
+}
+
+function inviteHtml() {
+  return `<!doctype html><html><body style="margin:0;background:#08080a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#f4f4f7;">
+  <div style="max-width:480px;margin:0 auto;padding:40px 28px;">
+    <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#ffb84d;font-weight:600;">Berg Castle</div>
+    <h1 style="font-size:24px;font-weight:650;letter-spacing:-.02em;margin:16px 0 8px;color:#fff;">You're in.</h1>
+    <p style="font-size:15px;line-height:1.6;color:#b8b8c0;margin:0 0 28px;">You've been given access to Simon's smart home. Tap below to open it, choose the email sign-in, and you'll get a 6-digit code in this inbox.</p>
+    <a href="${PANEL_URL}" style="display:inline-block;background:#ffb84d;color:#1a1206;text-decoration:none;font-weight:650;font-size:15px;padding:14px 28px;border-radius:12px;">Open Berg Castle</a>
+    <p style="font-size:13px;line-height:1.6;color:#7a7a84;margin:28px 0 0;">On iPhone, after signing in: tap Share \u2192 <b style="color:#b8b8c0;">Add to Home Screen</b> to install the app.</p>
+    <p style="font-size:12px;color:#5a5a64;margin:24px 0 0;">${PANEL_URL}</p>
+  </div></body></html>`;
+}
+
 // ---- Identity --------------------------------------------------------------
 
 // Extract the authenticated email CF Access injected. Header name is lower-cased
@@ -225,7 +307,11 @@ async function handle(req, res, pathname) {
       }
       const next = await writeEmails(policy, [...current, clean]);
       console.log(`[admin] ${requesterEmail(req)} added ${clean}`);
-      sendJson(res, 200, { users: next, added: true });
+      // Fire the branded invite email (best-effort — never blocks the add).
+      const invite = await sendInvite(clean);
+      if (invite.sent) console.log(`[admin] invite emailed to ${clean} (${invite.id})`);
+      else console.log(`[admin] invite NOT sent to ${clean}: ${invite.reason}`);
+      sendJson(res, 200, { users: next, added: true, invited: invite.sent, inviteReason: invite.reason });
       return true;
     }
 

@@ -154,7 +154,11 @@
         try {
           const res = await api('POST', '/api/admin/users', { email });
           input.value = '';
-          toast(res.added ? `Added ${email}` : (res.note || 'Already had access'), 'ok');
+          let msg;
+          if (!res.added) msg = res.note || 'Already had access';
+          else if (res.invited) msg = `Added \u2014 invite emailed to ${email}`;
+          else msg = `Added ${email} (invite email pending: ${res.inviteReason || 'not sent'})`;
+          toast(msg, res.added && !res.invited ? 'err' : 'ok');
           render({ ...data, users: res.users });
         } catch (e) { toast(e.message, 'err'); }
         finally { addBtn.disabled = false; }
