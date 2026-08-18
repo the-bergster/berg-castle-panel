@@ -25,8 +25,21 @@ const intercom = require('./intercom');
 const climate = require('./climate');
 const voice = require('./voice');
 const admin = require('./admin');
+const watchRelay = require('./watch-relay');
+const voiceStream = require('./voice-stream');
+const { WebSocketServer } = require('ws');
 
 const PORT = 4321;
+
+// Watch service token (scopes POST /api/watch/voice). Loaded from secrets.
+const WATCH_TOKEN = (() => {
+  if (process.env.WATCH_TOKEN) return process.env.WATCH_TOKEN.trim();
+  try {
+    const p = path.join(process.env.HOME || '/Users/jony', '.openclaw/workspace/.secrets/berg-castle-watch/token.env');
+    const m = fs.readFileSync(p, 'utf8').match(/WATCH_TOKEN\s*=\s*(.+)/);
+    return m ? m[1].trim() : null;
+  } catch (_) { return null; }
+})();
 const ROOMS_DATA = loadRooms();
 const SCENES_DATA = loadScenes(
   path.join(__dirname, 'picos.json'),
@@ -564,6 +577,61 @@ const server = http.createServer(async (req, res) => {
     });
     return;
   }
+
+  // ---- Watch press-to-talk voice relay ----
+  // The Watch POSTs one recorded clip (base64 PCM16 mono 24k) + a service token.
+  // We run one turn through the SAME Jony agent + tools, return spoken reply.
+  if (req.method === 'POST' && pathname === '/api/watch/voice') {
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        // Service-token auth: Watch can't do CF Access OTP, so it presents a
+        // static bearer token scoped to just this route.
+        const token = (req.headers['x-watch-token'] || payload.token || '').trim();
+        if (!WATCH_TOKEN || token !== WATCH_TOKEN) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'unauthorized' })); return;
+        }
+        if (!payload.audio) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'no audio' })); return;
+        }
+        const apiKey = voice.loadApiKey();
+        // Build the SAME session config the browser uses (live house data).
+        let climateZones = [], sonosRooms = [];
+        try {
+          const { body } = await climate.bridgeRequest({ method: 'GET', path: '/thermostats' });
+          climateZones = ((body && body.thermostats) || []).map(t => t.name).filter(Boolean);
+        } catch (_) {}
+        try {
+          sonosRooms = [...new Set((sonos.topology.rooms || []).map(r => r.name).filter(Boolean))].sort();
+        } catch (_) {}
+        const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms);
+        const result = await watchRelay.runTurn({
+          apiKey,
+          sessionConfig: cfg,
+          audioPcm16Base64: payload.audio,
+          runToolFn: runVoiceTool,
+          log: (...a) => console.log(...a),
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          transcript: result.transcript,
+          reply: result.replyText,
+          audio: result.audioPcm16.toString('base64'), // PCM16 24k mono
+          sampleRate: 24000,
+        }));
+      } catch (e) {
+        console.error('[watch:voice]', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/zone-set') {
     let body = '';
     req.on('data', c => body += c);
@@ -730,9 +798,38 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404); res.end('Not found');
 });
 
-server.on('upgrade', (req, socket) => {
-  if (req.headers.upgrade?.toLowerCase() === 'websocket') handleUpgrade(req, socket);
-  else socket.destroy();
+// Freeflow voice socket (Watch): persistent bridge to OpenAI Realtime. Uses the
+// `ws` library (separate from the hand-rolled live-sync socket) on /ws/voice.
+const voiceWss = new WebSocketServer({ noServer: true });
+voiceWss.on('connection', (ws) => {
+  console.log('[voice-stream] +watch client');
+  let climateZones = [], sonosRooms = [];
+  try { sonosRooms = [...new Set((sonos.topology.rooms || []).map(r => r.name).filter(Boolean))].sort(); } catch (_) {}
+  // Kick off with whatever climate zones we can grab; don't block the socket.
+  climate.bridgeRequest({ method: 'GET', path: '/thermostats' })
+    .then(({ body }) => { climateZones = ((body && body.thermostats) || []).map(t => t.name).filter(Boolean); })
+    .catch(() => {})
+    .finally(() => {
+      const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms);
+      voiceStream.attachSession(ws, { sessionConfig: cfg, runToolFn: runVoiceTool, log: (...a) => console.log(...a) });
+    });
+});
+
+server.on('upgrade', (req, socket, head) => {
+  if (req.headers.upgrade?.toLowerCase() !== 'websocket') { socket.destroy(); return; }
+  let pathname = '/';
+  try { pathname = new URL(req.url, `http://${req.headers.host}`).pathname; } catch (_) {}
+  if (pathname === '/ws/voice') {
+    // Auth: Watch presents the service token as ?token= (can't set WS headers easily).
+    let token = '';
+    try { token = new URL(req.url, `http://${req.headers.host}`).searchParams.get('token') || ''; } catch (_) {}
+    if (!WATCH_TOKEN || token.trim() !== WATCH_TOKEN) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return;
+    }
+    voiceWss.handleUpgrade(req, socket, head, (ws) => voiceWss.emit('connection', ws, req));
+    return;
+  }
+  handleUpgrade(req, socket);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
