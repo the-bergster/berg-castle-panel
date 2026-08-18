@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const houseMemory = require('./house-memory');
 
 const MODEL = 'gpt-realtime-2.1'; // latest speech-to-speech (verified 2026-08-16)
 const VOICE = 'cedar';
@@ -119,7 +120,14 @@ ${climateList}
 SONOS MUSIC ROOMS:
 ${sonosList}
 
-Cameras are coming soon — you can't see them yet.`;
+Cameras are coming soon — you can't see them yet.
+
+MEMORY
+- When Simon explicitly asks you to remember something ("remember that...",
+  "note that...", "from now on..."), CALL the remember tool with a short, clear
+  fact. Then confirm out loud in a few words ("Got it — I'll remember that").
+- Only use remember when he actually asks you to remember. Don't record ordinary
+  commands or chit-chat.${houseMemory.instructionsBlock()}`;
 }
 
 // -------- Tool schemas exposed to the model --------
@@ -315,6 +323,18 @@ function toolSchemas() {
         properties: {
           room: { type: 'string', description: 'Optional exact Sonos room name to filter to one.' },
         },
+      },
+    },
+    {
+      type: 'function',
+      name: 'remember',
+      description: 'Save a fact or preference to long-term memory. ONLY call this when Simon explicitly asks you to remember/note something (e.g. "remember that I like the lounge at 30% in the evenings"). Do not use for ordinary commands.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fact: { type: 'string', description: 'A short, clear statement of what to remember, phrased as a durable fact or preference.' },
+        },
+        required: ['fact'],
       },
     },
   ];

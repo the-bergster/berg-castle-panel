@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const houseMemory = require('./house-memory');
 
 // ---- Config ----------------------------------------------------------------
 
@@ -333,6 +334,37 @@ async function handle(req, res, pathname) {
       const next = await writeEmails(policy, current.filter((e) => e !== clean));
       console.log(`[admin] ${requesterEmail(req)} removed ${clean}`);
       sendJson(res, 200, { users: next, removed: true });
+      return true;
+    }
+
+    // ---- Voice agent memory + system-prompt override (owner-only) ----
+
+    // GET /api/admin/voice-memory — current memory file + prompt override.
+    if (req.method === 'GET' && pathname === '/api/admin/voice-memory') {
+      sendJson(res, 200, {
+        memory: houseMemory.readMemory(),
+        promptOverride: houseMemory.readPromptOverride(),
+      });
+      return true;
+    }
+
+    // PUT /api/admin/voice-memory { memory } — replace the whole memory file
+    // (Simon curating/pruning what the agent remembers).
+    if (req.method === 'PUT' && pathname === '/api/admin/voice-memory') {
+      const { memory } = await readBody(req);
+      houseMemory.writeMemory(String(memory || ''));
+      console.log(`[admin] ${requesterEmail(req)} edited voice memory`);
+      sendJson(res, 200, { ok: true, memory: houseMemory.readMemory() });
+      return true;
+    }
+
+    // PUT /api/admin/voice-prompt { promptOverride } — set the owner system-prompt
+    // override that layers on top of the base instructions.
+    if (req.method === 'PUT' && pathname === '/api/admin/voice-prompt') {
+      const { promptOverride } = await readBody(req);
+      houseMemory.writePromptOverride(String(promptOverride || ''));
+      console.log(`[admin] ${requesterEmail(req)} edited voice prompt override`);
+      sendJson(res, 200, { ok: true, promptOverride: houseMemory.readPromptOverride() });
       return true;
     }
 

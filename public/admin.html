@@ -78,6 +78,12 @@
     .spin { color:var(--text-dim); font-size:14px; padding:8px 4px; }
     .gate { text-align:center; padding:60px 20px; color:var(--text-dim); }
     .gate strong { color:var(--danger); display:block; font-size:17px; margin-bottom:8px; }
+    .vlabel { display:block; font-size:13px; font-weight:600; margin:6px 0 6px; }
+    .vsub { font-weight:400; opacity:0.6; font-size:12px; }
+    .vtext { width:100%; box-sizing:border-box; background:rgba(255,255,255,0.04);
+      border:1px solid rgba(255,255,255,0.14); border-radius:10px; color:inherit;
+      font:inherit; font-size:14px; padding:10px 12px; resize:vertical; line-height:1.45; }
+    .vtext:focus { outline:none; border-color:var(--accent, #e8a13a); }
   </style>
 </head>
 <body>
@@ -144,7 +150,42 @@
         <div class="card">
           <h2>Who has access</h2>
           <ul class="users">${rows || '<li class="empty">No users yet.</li>'}</ul>
+        </div>
+        <div class="card">
+          <h2>Jony — voice agent</h2>
+          <div class="hint">The voice of Berg Castle. Edit how it behaves and what it remembers.
+            Changes apply on the next voice session.</div>
+          <label class="vlabel">System prompt override <span class="vsub">(layers on top of the built-in instructions; leave blank for defaults)</span></label>
+          <textarea id="vPrompt" class="vtext" rows="5" placeholder="e.g. Be extra concise. Call the master bedroom &quot;our room&quot;."></textarea>
+          <div class="add-row"><button class="add" id="savePromptBtn">Save prompt</button></div>
+          <label class="vlabel" style="margin-top:14px">Memory <span class="vsub">(things Jony has been told to remember, newest dates at the bottom — prune freely)</span></label>
+          <textarea id="vMemory" class="vtext" rows="8" placeholder="(empty — say &quot;Jony, remember...&quot; on voice to add facts)"></textarea>
+          <div class="add-row"><button class="add" id="saveMemoryBtn">Save memory</button></div>
         </div>`;
+
+      // Voice agent: load + wire save buttons.
+      (async () => {
+        try {
+          const vm = await api('GET', '/api/admin/voice-memory');
+          $('#vPrompt').value = vm.promptOverride || '';
+          $('#vMemory').value = vm.memory || '';
+        } catch (_) {}
+      })();
+      $('#savePromptBtn').onclick = async () => {
+        const btn = $('#savePromptBtn'); btn.disabled = true;
+        try {
+          await api('PUT', '/api/admin/voice-prompt', { promptOverride: $('#vPrompt').value });
+          toast('Prompt saved', 'ok');
+        } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
+      };
+      $('#saveMemoryBtn').onclick = async () => {
+        const btn = $('#saveMemoryBtn'); btn.disabled = true;
+        try {
+          const res = await api('PUT', '/api/admin/voice-memory', { memory: $('#vMemory').value });
+          $('#vMemory').value = res.memory || '';
+          toast('Memory saved', 'ok');
+        } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
+      };
 
       const addBtn = $('#addBtn'), input = $('#newEmail');
       const doAdd = async () => {

@@ -27,6 +27,7 @@ const voice = require('./voice');
 const admin = require('./admin');
 const watchRelay = require('./watch-relay');
 const voiceStream = require('./voice-stream');
+const houseMemory = require('./house-memory');
 const { WebSocketServer } = require('ws');
 
 const PORT = 4321;
@@ -107,6 +108,13 @@ function broadcast(msg) {
 // uses. Returns a small JSON result the model reads back to the user.
 async function runVoiceTool(name, args) {
   switch (name) {
+    case 'remember': {
+      // Command-only memory: the model is instructed to call this ONLY when
+      // Simon explicitly asks. Appends under today's date in house-memory.md.
+      const res = houseMemory.remember(args.fact);
+      if (res.ok) console.log(`[house-memory] remembered: ${res.remembered}`);
+      return res;
+    }
     case 'set_output': {
       const { id, level } = args;
       await lutron.setOutput(id, level, 1);
