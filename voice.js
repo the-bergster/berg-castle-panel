@@ -400,4 +400,4 @@ function mintClientSecret(sessionConfig) {
   });
 }
 
-module.exports = { MODEL, VOICE, buildSessionConfig, mintClientSecret, loadApiKey };
+module.exports = { MODEL, VOICE, buildInstructions, buildSessionConfig, mintClientSecret, loadApiKey };

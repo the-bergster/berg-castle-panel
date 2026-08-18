@@ -261,7 +261,7 @@ function readBody(req) {
 // ---- Route handler ---------------------------------------------------------
 // Returns true if it handled the request, false to let the main router continue.
 
-async function handle(req, res, pathname) {
+async function handle(req, res, pathname, ctx = {}) {
   if (!pathname.startsWith('/api/admin/')) return false;
 
   // Every admin route is owner-gated.
@@ -344,6 +344,7 @@ async function handle(req, res, pathname) {
       sendJson(res, 200, {
         memory: houseMemory.readMemory(),
         promptOverride: houseMemory.readPromptOverride(),
+        basePrompt: ctx.basePrompt || '',
       });
       return true;
     }
