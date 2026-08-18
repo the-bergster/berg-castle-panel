@@ -51,6 +51,33 @@ Direct Lutron control means:
 - No subscription needed
 - Works even if Josh is down / lapsed
 
+### Voice ("Jony", OpenAI Realtime)
+
+The house voice agent — `gpt-realtime-2.1`, named Jony, controls lights/fireplaces/
+scenes/climate/music by calling tools. It is NOT the OpenClaw Jony; it's a separate
+Realtime model whose session config (instructions + tools) is assembled in `voice.js`
+`buildSessionConfig`. Two transports:
+
+- **Phone / browser** — WebRTC via an ephemeral client secret minted at
+  `GET /api/voice/session` (`voice.js mintClientSecret`). Real key never leaves the Mac.
+- **Apple Watch** — standalone freeflow over a persistent WebSocket bridge at
+  `/ws/voice` (`voice-stream.js`), server-side `semantic_vad` for continuous convo +
+  barge-in. (watchOS has no WebRTC lib, so streaming WS instead — same experience.)
+  Watch app lives in the sibling `berg-castle-ios` repo.
+
+**Memory + editable prompt (V1, 2026-08-18).** `house-memory.js`:
+- Single dated `house-memory.md` (in `.secrets/berg-castle-watch/`), loaded in full
+  into every voice session. **Command-only writes**: the agent has a `remember` tool
+  it may call ONLY when Simon explicitly asks to remember something. No autonomous
+  capture, no self-editing.
+- Editable system-prompt override (`house-prompt-override.md`) layers on the base
+  instructions.
+- Curated via the **Admin page → "Jony — voice agent"** card (owner-only,
+  `me@simonberg.ai`): edit prompt, view/prune memory. Endpoints:
+  `GET/PUT /api/admin/voice-memory`, `PUT /api/admin/voice-prompt`.
+- Two-tier split (distilled main + daily recall, like the OpenClaw Jony's memory)
+  deferred until volume warrants; dates are already in the file for a clean migration.
+
 ---
 
 ## Architecture
