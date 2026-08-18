@@ -44,13 +44,12 @@
       color:var(--text-dim); margin-bottom:16px; }
 
     .add-row { display:flex; gap:10px; margin-bottom:6px; }
-    input[type=email] { flex:1; background:var(--bg-3); border:1px solid var(--line-strong);
-      border-radius:12px; padding:14px 16px; color:var(--text); font-size:16px; font-family:var(--font-body);
+    input[type=email] { flex:1; height:44px; background:var(--bg-3); border:1px solid var(--line-strong);
+      border-radius:12px; padding:0 16px; color:var(--text); font-size:16px; font-family:var(--font-body);
       transition:border-color var(--ease) 120ms; }
     input[type=email]:focus { outline:none; border-color:var(--accent-dim); }
     input[type=email]::placeholder { color:var(--text-dimmer); }
-    button.add { background:var(--accent); color:#1a1206; border:none; border-radius:12px;
-      padding:0 20px; font-size:15px; font-weight:650; transition:all var(--ease) 120ms; }
+    button.add { background:var(--accent); color:#1a1206; border:none; }
     button.add:active { transform:scale(.95); background:var(--accent-bright); }
     button.add:disabled { opacity:.4; }
 
@@ -61,10 +60,7 @@
     .email { flex:1; font-size:15px; word-break:break-all; }
     .badge { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
       padding:3px 8px; border-radius:6px; background:var(--accent-glow); color:var(--accent-bright); }
-    button.rm { background:transparent; border:1px solid var(--line-strong); color:var(--danger);
-      border-radius:10px; padding:8px 14px; font-size:13px; font-weight:600;
-      transition:all var(--ease) 120ms; }
-    button.rm:active { background:var(--danger-dim); color:#fff; transform:scale(.95); }
+
 
     .hint { color:var(--text-dim); font-size:12.5px; line-height:1.6; margin-top:14px; }
     .toast { position:fixed; left:50%; bottom:calc(var(--safe-bottom) + 24px); transform:translateX(-50%);
@@ -78,12 +74,23 @@
     .spin { color:var(--text-dim); font-size:14px; padding:8px 4px; }
     .gate { text-align:center; padding:60px 20px; color:var(--text-dim); }
     .gate strong { color:var(--danger); display:block; font-size:17px; margin-bottom:8px; }
-    .vlabel { display:block; font-size:13px; font-weight:600; margin:6px 0 6px; }
-    .vsub { font-weight:400; opacity:0.6; font-size:12px; }
-    .vtext { width:100%; box-sizing:border-box; background:rgba(255,255,255,0.04);
-      border:1px solid rgba(255,255,255,0.14); border-radius:10px; color:inherit;
-      font:inherit; font-size:14px; padding:10px 12px; resize:vertical; line-height:1.45; }
-    .vtext:focus { outline:none; border-color:var(--accent, #e8a13a); }
+    .vlabel { display:block; font-size:13px; font-weight:600; color:var(--text-mid); margin:0 0 6px; }
+    .vsub { font-weight:400; color:var(--text-dim); font-size:12px; }
+    .vtext { width:100%; box-sizing:border-box; background:var(--bg-3);
+      border:1px solid var(--line-strong); border-radius:12px; color:var(--text);
+      font:inherit; font-size:14px; padding:12px 14px; resize:vertical; line-height:1.5;
+      transition:border-color var(--ease) 120ms; }
+    .vtext:focus { outline:none; border-color:var(--accent-dim); }
+    /* consistent button row + sizing across the whole admin */
+    .btn-row { display:flex; gap:10px; margin-top:12px; }
+    button.add, button.rm { height:44px; display:inline-flex; align-items:center;
+      justify-content:center; border-radius:12px; font-size:14px; font-weight:650;
+      padding:0 18px; transition:all var(--ease) 120ms; cursor:pointer; }
+    button.rm { background:transparent; border:1px solid var(--line-strong); color:var(--text-mid); }
+    button.rm:active { background:var(--bg-3); transform:scale(.96); }
+    ul.users button.rm { color:var(--danger); }
+    ul.users button.rm:active { background:var(--danger-dim); color:#fff; }
+    .field + .field { margin-top:18px; }
   </style>
 </head>
 <body>
@@ -153,19 +160,21 @@
         </div>
         <div class="card">
           <h2>Jony — voice agent</h2>
-          <div class="hint">The voice of Berg Castle. Edit how it behaves and what it remembers.
-            Changes apply on the next voice session.</div>
-          <label class="vlabel">Personality &amp; voice <span class="vsub">(how Jony talks — tone, name, style. Edit freely; empty resets to default)</span></label>
-          <textarea id="vPersona" class="vtext" rows="6"></textarea>
-          <div class="add-row"><button class="add" id="savePersonaBtn">Save personality</button><button class="rm" id="resetPersonaBtn" style="margin-left:8px">Reset to default</button></div>
-          <label class="vlabel" style="margin-top:14px">Live system prompt <span class="vsub">(read-only — built fresh from house data each session; personality + functional rules + your override + memory)</span></label>
-          <textarea id="vBase" class="vtext" rows="8" readonly style="opacity:0.75"></textarea>
-          <label class="vlabel" style="margin-top:14px">System prompt override <span class="vsub">(your custom additions — layered on top of the built-in instructions)</span></label>
-          <textarea id="vPrompt" class="vtext" rows="5" placeholder="e.g. Be extra concise. Call the master bedroom &quot;our room&quot;."></textarea>
-          <div class="add-row"><button class="add" id="savePromptBtn">Save prompt</button></div>
-          <label class="vlabel" style="margin-top:14px">Memory <span class="vsub">(things Jony has been told to remember, newest dates at the bottom — prune freely)</span></label>
-          <textarea id="vMemory" class="vtext" rows="8" placeholder="(empty — say &quot;Jony, remember...&quot; on voice to add facts)"></textarea>
-          <div class="add-row"><button class="add" id="saveMemoryBtn">Save memory</button></div>
+          <div class="field">
+            <label class="vlabel">System prompt <span class="vsub">(Jony's personality &amp; voice — tone, name, style. The functional house-control rules are built in and always apply.)</span></label>
+            <textarea id="vPersona" class="vtext" rows="7"></textarea>
+            <div class="btn-row">
+              <button class="add" id="savePersonaBtn">Save</button>
+              <button class="rm" id="resetPersonaBtn">Reset to default</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="vlabel">Memory <span class="vsub">(things Jony has been told to remember — prune freely)</span></label>
+            <textarea id="vMemory" class="vtext" rows="7" placeholder="(empty — say &quot;Jony, remember...&quot; on voice to add facts)"></textarea>
+            <div class="btn-row">
+              <button class="add" id="saveMemoryBtn">Save</button>
+            </div>
+          </div>
         </div>`;
 
       // Voice agent: load + wire save buttons.
@@ -173,9 +182,6 @@
         try {
           const vm = await api('GET', '/api/admin/voice-memory');
           $('#vPersona').value = vm.persona || '';
-          $('#vPersona').dataset.default = vm.personaDefault || '';
-          $('#vBase').value = vm.basePrompt || '(could not load)';
-          $('#vPrompt').value = vm.promptOverride || '';
           $('#vMemory').value = vm.memory || '';
         } catch (_) {}
       })();
@@ -184,11 +190,11 @@
         try {
           const res = await api('PUT', '/api/admin/voice-persona', { persona: $('#vPersona').value });
           $('#vPersona').value = res.persona || '';
-          toast('Personality saved', 'ok');
+          toast('Saved', 'ok');
         } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
       };
       $('#resetPersonaBtn').onclick = async () => {
-        if (!confirm('Reset personality to the built-in default?')) return;
+        if (!confirm('Reset the system prompt to the built-in default?')) return;
         const btn = $('#resetPersonaBtn'); btn.disabled = true;
         try {
           const res = await api('PUT', '/api/admin/voice-persona', { persona: '' });
@@ -196,19 +202,12 @@
           toast('Reset to default', 'ok');
         } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
       };
-      $('#savePromptBtn').onclick = async () => {
-        const btn = $('#savePromptBtn'); btn.disabled = true;
-        try {
-          await api('PUT', '/api/admin/voice-prompt', { promptOverride: $('#vPrompt').value });
-          toast('Prompt saved', 'ok');
-        } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
-      };
       $('#saveMemoryBtn').onclick = async () => {
         const btn = $('#saveMemoryBtn'); btn.disabled = true;
         try {
           const res = await api('PUT', '/api/admin/voice-memory', { memory: $('#vMemory').value });
           $('#vMemory').value = res.memory || '';
-          toast('Memory saved', 'ok');
+          toast('Saved', 'ok');
         } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
       };
 

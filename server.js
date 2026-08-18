@@ -382,15 +382,7 @@ const server = http.createServer(async (req, res) => {
     serveStatic(res, 'admin.html'); return;
   }
   if (pathname.startsWith('/api/admin/')) {
-    // Give admin the LIVE base prompt (built from current house data) so the
-    // panel can show what Jony actually runs, not just the override.
-    let basePrompt = '';
-    try {
-      let climateZones = [], sonosRooms = [];
-      try { sonosRooms = [...new Set((sonos.topology.rooms || []).map(r => r.name).filter(Boolean))].sort(); } catch (_) {}
-      basePrompt = voice.buildInstructions(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms);
-    } catch (_) {}
-    const handled = await admin.handle(req, res, pathname, { basePrompt });
+    const handled = await admin.handle(req, res, pathname);
     if (handled) return;
   }
 
