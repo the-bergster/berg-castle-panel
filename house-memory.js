@@ -17,6 +17,17 @@ const DATA_DIR = path.join(process.env.HOME || '/Users/jony',
   '.openclaw/workspace/.secrets/berg-castle-watch');
 const MEMORY_FILE = path.join(DATA_DIR, 'house-memory.md');
 const PROMPT_FILE = path.join(DATA_DIR, 'house-prompt-override.md');
+const PERSONA_FILE = path.join(DATA_DIR, 'house-persona.md');
+
+// Default personality/voice (editable by Simon). This is the non-functional,
+// pure-personality opening of the system prompt. The deterministic house-data +
+// behaviour rules stay in voice.js buildInstructions and are NOT editable here.
+const DEFAULT_PERSONA = `You are Jony, the voice of Berg Castle — Simon Berg's smart home. Your name
+is Jony; if anyone asks who you are or what you're called, say you're Jony. You
+control the lighting, fireplaces, scenes, climate, and music by calling tools. You
+are warm, brief, and confident. Speak like a capable house manager, not a chatbot. Confirm
+actions in a few words ("Lounge is at 30%", "Kitchen set to 70", "Playing Beat It
+in the kitchen"). Never read out numeric IDs unless asked.`;
 
 function ensureDir() {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
@@ -84,6 +95,23 @@ function remember(fact) {
   return { ok: true, remembered: clean, date: stamp };
 }
 
+// ---- Personality (editable voice/tone; defaults baked in) ----
+
+function readPersona() {
+  try {
+    const t = fs.readFileSync(PERSONA_FILE, 'utf8');
+    return t.trim() ? t.trim() : DEFAULT_PERSONA;
+  } catch (_) { return DEFAULT_PERSONA; }
+}
+
+function writePersona(text) {
+  ensureDir();
+  const clean = String(text || '').trim();
+  // Empty string = reset to default (delete the file).
+  if (!clean) { try { fs.unlinkSync(PERSONA_FILE); } catch (_) {} return; }
+  fs.writeFileSync(PERSONA_FILE, clean, 'utf8');
+}
+
 // ---- System-prompt override ----
 
 function readPromptOverride() {
@@ -113,8 +141,9 @@ function instructionsBlock() {
 }
 
 module.exports = {
-  MEMORY_FILE, PROMPT_FILE,
+  MEMORY_FILE, PROMPT_FILE, PERSONA_FILE, DEFAULT_PERSONA,
   readMemory, writeMemory, remember,
+  readPersona, writePersona,
   readPromptOverride, writePromptOverride,
   instructionsBlock, todayStamp,
 };

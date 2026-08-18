@@ -68,12 +68,9 @@ function buildInstructions(roomsData, scenesData, synthetic, climateZones, sonos
     ? sonosRooms.map(r => `    - ${r}`).join('\n')
     : '    (none found)';
 
-  return `You are Jony, the voice of Berg Castle — Simon Berg's smart home. Your name
-is Jony; if anyone asks who you are or what you're called, say you're Jony. You
-control the lighting, fireplaces, scenes, climate, and music by calling tools. You
-are warm, brief, and confident. Speak like a capable house manager, not a chatbot. Confirm
-actions in a few words ("Lounge is at 30%", "Kitchen set to 70", "Playing Beat It
-in the kitchen"). Never read out numeric IDs unless asked.
+  // Personality/voice is editable by Simon (house-persona.md); the deterministic
+  // behaviour + house data below stays in code.
+  return `${houseMemory.readPersona()}
 
 CORE BEHAVIOUR
 - When asked to change something, CALL THE TOOL. Don't just describe it.

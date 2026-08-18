@@ -155,7 +155,10 @@
           <h2>Jony — voice agent</h2>
           <div class="hint">The voice of Berg Castle. Edit how it behaves and what it remembers.
             Changes apply on the next voice session.</div>
-          <label class="vlabel">Live system prompt <span class="vsub">(read-only — built fresh from house data each session; includes your override + memory below)</span></label>
+          <label class="vlabel">Personality &amp; voice <span class="vsub">(how Jony talks — tone, name, style. Edit freely; empty resets to default)</span></label>
+          <textarea id="vPersona" class="vtext" rows="6"></textarea>
+          <div class="add-row"><button class="add" id="savePersonaBtn">Save personality</button><button class="rm" id="resetPersonaBtn" style="margin-left:8px">Reset to default</button></div>
+          <label class="vlabel" style="margin-top:14px">Live system prompt <span class="vsub">(read-only — built fresh from house data each session; personality + functional rules + your override + memory)</span></label>
           <textarea id="vBase" class="vtext" rows="8" readonly style="opacity:0.75"></textarea>
           <label class="vlabel" style="margin-top:14px">System prompt override <span class="vsub">(your custom additions — layered on top of the built-in instructions)</span></label>
           <textarea id="vPrompt" class="vtext" rows="5" placeholder="e.g. Be extra concise. Call the master bedroom &quot;our room&quot;."></textarea>
@@ -169,11 +172,30 @@
       (async () => {
         try {
           const vm = await api('GET', '/api/admin/voice-memory');
+          $('#vPersona').value = vm.persona || '';
+          $('#vPersona').dataset.default = vm.personaDefault || '';
           $('#vBase').value = vm.basePrompt || '(could not load)';
           $('#vPrompt').value = vm.promptOverride || '';
           $('#vMemory').value = vm.memory || '';
         } catch (_) {}
       })();
+      $('#savePersonaBtn').onclick = async () => {
+        const btn = $('#savePersonaBtn'); btn.disabled = true;
+        try {
+          const res = await api('PUT', '/api/admin/voice-persona', { persona: $('#vPersona').value });
+          $('#vPersona').value = res.persona || '';
+          toast('Personality saved', 'ok');
+        } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
+      };
+      $('#resetPersonaBtn').onclick = async () => {
+        if (!confirm('Reset personality to the built-in default?')) return;
+        const btn = $('#resetPersonaBtn'); btn.disabled = true;
+        try {
+          const res = await api('PUT', '/api/admin/voice-persona', { persona: '' });
+          $('#vPersona').value = res.persona || '';
+          toast('Reset to default', 'ok');
+        } catch (e) { toast(e.message, 'err'); } finally { btn.disabled = false; }
+      };
       $('#savePromptBtn').onclick = async () => {
         const btn = $('#savePromptBtn'); btn.disabled = true;
         try {

@@ -344,8 +344,20 @@ async function handle(req, res, pathname, ctx = {}) {
       sendJson(res, 200, {
         memory: houseMemory.readMemory(),
         promptOverride: houseMemory.readPromptOverride(),
+        persona: houseMemory.readPersona(),
+        personaDefault: houseMemory.DEFAULT_PERSONA,
         basePrompt: ctx.basePrompt || '',
       });
+      return true;
+    }
+
+    // PUT /api/admin/voice-persona { persona } — edit the personality/voice.
+    // Empty resets to the built-in default.
+    if (req.method === 'PUT' && pathname === '/api/admin/voice-persona') {
+      const { persona } = await readBody(req);
+      houseMemory.writePersona(String(persona || ''));
+      console.log(`[admin] ${requesterEmail(req)} edited voice persona`);
+      sendJson(res, 200, { ok: true, persona: houseMemory.readPersona() });
       return true;
     }
 
