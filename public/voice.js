@@ -138,7 +138,7 @@ const Voice = (() => {
         send({
           type: 'response.create',
           response: {
-            instructions: 'Say a brief, warm sign-off in one short sentence (e.g. "No problem — I\'m here if you need anything.") Then stop. Do not ask another question.',
+            instructions: 'Say a brief, warm, HUMAN sign-off the way a person ends a call — e.g. "No problem, catch you later!", "Anytime — bye!", "Sure thing, see you!". End with a natural closer like "bye", "catch you later", or "see you". Do NOT narrate the mechanics of ending (never say things like "let me close things out", "ending the call", or "hanging up now"). One short sentence, then stop. Do not ask another question.',
           },
         });
         // Safety fallback: if the goodbye audio never completes, hang up after 8s.
