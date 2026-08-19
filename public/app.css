@@ -483,6 +483,9 @@ a { color: inherit; text-decoration: none; }
      home only. Fix: make home fill the LARGE viewport (100lvh) so it's in the
      same (full-height) viewport state as every scrollable page — the pill then
      lands at the identical physical bottom everywhere. */
+  /* Old-Safari fallback FIRST (iOS < 15.4 has no svh/lvh — the line below is
+     invalid there and dropped, so vh must carry it). */
+  min-height: calc(100vh - var(--safe-top) - var(--dock-h) - 8px);
   min-height: calc(100svh - var(--safe-top) - var(--dock-h) - 8px);
 }
 /* The home page fit exactly with no scroll, so iOS kept a SHORTER viewport
@@ -493,7 +496,12 @@ a { color: inherit; text-decoration: none; }
    viewport — same state as every scrollable page — and the bottom-pinned pill
    lands identically. The overflow is tiny (a few px) so it's effectively not
    scrollable to the eye. */
-body:has(.hub-root) { min-height: 1200px; }
+/* :has() is iOS 16.4+. Guard it so old Safari (14.6 on the wall iPads) doesn't
+   choke on an unsupported selector; the flex hub-root min-height above already
+   sizes the page correctly without this iOS-17-era pill-alignment nudge. */
+@supports selector(:has(*)) {
+  body:has(.hub-root) { min-height: 1200px; }
+}
 
 /* body already pads for --safe-top, so header just adds its own breathing room. */
 .hub-head {

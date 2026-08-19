@@ -53,8 +53,17 @@
 }
 
 /* ─── Page shell: navy bg, override the panel's default darker ───────── */
-body:has(.climate-page) {
+/* :has() is iOS 16.4+; guard so 14.6 wall iPads don't choke. On old Safari the
+   climate page keeps the default dark bg (cosmetic-only difference). */
+@supports selector(:has(*)) {
+  body:has(.climate-page) {
+    background: var(--clim-bg-0);
+  }
+}
+/* Fallback that works everywhere: tint the climate page container itself. */
+.climate-page {
   background: var(--clim-bg-0);
+  min-height: 100vh;
 }
 
 /* ─── Top bar ────────────────────────────────────────────────────────── */
