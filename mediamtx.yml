@@ -49,8 +49,18 @@ webrtcAllowOrigins: ["*"]
 # Trust the local panel-server proxy for X-Forwarded-For.
 webrtcTrustedProxies: [127.0.0.1/32]
 webrtcLocalUDPAddress: :8189
-webrtcLocalTCPAddress: ""
+# Also offer a TCP/ICE path: some subnets/APs block the UDP ICE port, and the
+# iPad + Mac are on different 192.168.x subnets (bridged via Tailscale). TCP ICE
+# gives a fallback path so media can still flow when UDP can't.
+webrtcLocalTCPAddress: :8190
 webrtcIPsFromInterfaces: yes
+# Advertise ALL interface IPs (LAN 192.168.2.x AND Tailscale 100.x) so ICE can
+# find a working candidate pair. The iPad was only getting the Tailscale IP and
+# failing when it couldn't reach it; offering the LAN IP too fixes cross-device
+# publish. STUN adds server-reflexive candidates as a further fallback.
+webrtcAdditionalHosts: [192.168.2.82, 100.83.80.127]
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
 
 ###############################################
 # HLS — how viewers WATCH. Low-latency HLS for the tightest lag the format

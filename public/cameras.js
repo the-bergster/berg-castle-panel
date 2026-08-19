@@ -161,12 +161,19 @@
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
-      pub.pc = new RTCPeerConnection();
+      // STUN so the iPad also offers a server-reflexive candidate — needed
+      // because the iPad and Mac can sit on different 192.168.x subnets; a
+      // host-only candidate pair then can't connect and MediaMTX times out
+      // ('deadline exceeded while waiting tracks'). Matches the hub's STUN.
+      pub.pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
       for (const track of pub.stream.getTracks()) pub.pc.addTrack(track, pub.stream);
       const offer = await pub.pc.createOffer();
       await pub.pc.setLocalDescription(offer);
-      // Wait for ICE gathering (or 1.5s max) so the SDP has candidates.
-      await iceComplete(pub.pc, 1500);
+      // Wait for ICE gathering (or 2.5s max) so the SDP has candidates, incl.
+      // the STUN-derived reflexive one which can take a beat.
+      await iceComplete(pub.pc, 2500);
       const res = await fetch('/whip/cam-' + pub.slug, {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
