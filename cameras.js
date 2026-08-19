@@ -55,12 +55,37 @@ function list() {
       room: p.room,
       slug: p.slug,
       online: now - p.lastSeen < ONLINE_MS,
-      viewers: (viewers.get(p.slug) || {}).count || 0,
+      viewers: Math.max(0, (viewers.get(p.slug) || {}).count || 0),
     });
   }
   // Stable order by room name.
   out.sort((a, b) => a.room.localeCompare(b.room));
   return out;
+}
+
+// Reconcile our viewer counters against MediaMTX's ACTUAL reader counts so the
+// manual start/stop signals (which drift on HLS reconnects) can't leak upward
+// forever. Called on a timer from server.js.
+async function reconcileViewers() {
+  const data = await apiPaths();
+  if (!data || !Array.isArray(data.items)) return;
+  const realReaders = new Map(); // slug -> reader count
+  for (const item of data.items) {
+    // path names are cam-<slug>
+    const m = /^cam-(.+)$/.exec(item.name || '');
+    if (m) realReaders.set(m[1], (item.readers || []).length);
+  }
+  for (const [slug, v] of viewers.entries()) {
+    const real = realReaders.get(slug);
+    // If MediaMTX shows no readers at all, our count is stale — zero it (the
+    // grace window in shouldPublish still keeps publishing briefly).
+    if (real === undefined || real === 0) {
+      v.count = 0;
+    } else {
+      // Clamp to what's really connected so it can't run away.
+      v.count = Math.min(v.count, real);
+    }
+  }
 }
 
 // ---- Viewer tracking (drives on-demand publish) ----
@@ -87,11 +112,17 @@ function viewerCount(slug) {
 }
 
 // A panel polls this to learn whether it should be publishing (someone watching).
+// We combine our own viewer signal with a GRACE window so brief HLS reconnects
+// (which are constant with segmented HLS) don't flap the camera on/off. The
+// viewer signal is authoritative for "start"; for "stop" we wait out the grace.
+const PUBLISH_GRACE_MS = 12000; // keep publishing this long after last viewer
 function shouldPublish(deviceId) {
   const p = panels.get(deviceId);
   if (p) p.lastSeen = Date.now(); // this poll doubles as a heartbeat
   if (!p) return { publish: false, slug: null };
-  return { publish: viewerCount(p.slug) > 0, slug: p.slug };
+  const v = viewers.get(p.slug) || { count: 0, lastViewerAt: 0 };
+  const recentlyViewed = v.lastViewerAt && (Date.now() - v.lastViewerAt < PUBLISH_GRACE_MS);
+  return { publish: v.count > 0 || !!recentlyViewed, slug: p.slug };
 }
 
 // ---- Proxy helpers ----
@@ -155,7 +186,7 @@ function apiPaths() {
 
 module.exports = {
   slugify,
-  register, unregister, list,
+  register, unregister, list, reconcileViewers,
   addViewer, removeViewer, viewerCount, shouldPublish,
   proxy, apiPaths,
   MTX_HLS, MTX_WHIP, MTX_API,

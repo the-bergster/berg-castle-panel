@@ -30,6 +30,9 @@ const voiceStream = require('./voice-stream');
 const houseMemory = require('./house-memory');
 const wallSettings = require('./wall-settings');
 const cameras = require('./cameras');
+// Keep camera viewer counters honest against MediaMTX's real readers, so brief
+// HLS reconnects can't leak the count upward and pin the camera on forever.
+setInterval(() => { cameras.reconcileViewers().catch(() => {}); }, 5000);
 const { WebSocketServer } = require('ws');
 
 const PORT = 4321;

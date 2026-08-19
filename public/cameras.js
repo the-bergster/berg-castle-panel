@@ -58,7 +58,9 @@
     try {
       const Hls = await ensureHlsJs();
       if (Hls && Hls.isSupported()) {
-        const hls = new Hls({ lowLatencyMode: true, backBufferLength: 10 });
+        // Non-low-latency to match the fmp4 (non-LL) hub variant; LL mode expects
+        // parts and stalls without them. backBuffer small since it's live.
+        const hls = new Hls({ lowLatencyMode: false, backBufferLength: 6, liveSyncDurationCount: 3 });
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
@@ -133,10 +135,19 @@
   }
 
   // Heartbeat + on-demand: ask the hub if we should be publishing right now.
+  // Also RE-REGISTER each tick so a hub/panel restart (which clears the in-memory
+  // registry) is self-healing — the iPad reappears in the Cameras list within a
+  // few seconds without needing an app refresh.
   async function tick() {
     if (!pub.deviceId) return;
     let sp = { publish: false };
-    try { sp = await api('/api/cameras/should-publish?deviceId=' + encodeURIComponent(pub.deviceId)); } catch (_) {}
+    try {
+      sp = await api('/api/cameras/should-publish?deviceId=' + encodeURIComponent(pub.deviceId));
+    } catch (_) {}
+    // If the hub doesn't know us (restart wiped the registry), re-register.
+    if (sp && sp.slug == null && pub.room) {
+      try { await api('/api/cameras/register', { deviceId: pub.deviceId, room: pub.room }); } catch (_) {}
+    }
     if (sp.publish && !pub.publishing) startPublishing();
     else if (!sp.publish && pub.publishing) stopPublishing();
   }

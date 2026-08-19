@@ -60,11 +60,16 @@ webrtcIPsFromInterfaces: yes
 hls: yes
 hlsAddress: 127.0.0.1:8888
 hlsAllowOrigins: ["*"]
-hlsVariant: lowLatency
-hlsAlwaysRemux: no
+# IMPORTANT: iOS's native HLS player errors out (plays 1-2 frames then goes
+# black) if the low-latency PART duration DRIFTS between segments. With a live
+# WebRTC camera source the frame timing wobbles, so LL-HLS part durations were
+# constantly changing (238->242->236ms...) and iOS bailed. Fix: use fmp4 (no
+# low-latency parts, so no drift), which is stable + efficient on iOS. Costs a
+# couple extra seconds of latency — irrelevant for room monitoring, and it plays.
+hlsVariant: fmp4
+hlsAlwaysRemux: yes
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
 
 ###############################################
 # Paths. Camera streams are named cam-<room-slug>, e.g. cam-kitchen. Publishing
