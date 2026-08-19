@@ -19,7 +19,7 @@ const Voice = (() => {
   let speaking = false; // model is talking
   let wakeInitiated = false; // opened by the wake word (=> greet on connect)
   let idleTimer = null; // auto-hangup after inactivity
-  const IDLE_MS = 18000; // ~18s of no speech -> hang up
+  const IDLE_MS = 8000; // ~8s of no speech -> hang up
 
   function emit() {
     for (const fn of listeners) { try { fn(status, { error: lastError, speaking }); } catch {} }
