@@ -77,13 +77,14 @@ async function reconcileViewers() {
   }
   for (const [slug, v] of viewers.entries()) {
     const real = realReaders.get(slug);
-    // If MediaMTX shows no readers at all, our count is stale — zero it (the
-    // grace window in shouldPublish still keeps publishing briefly).
     if (real === undefined || real === 0) {
       v.count = 0;
     } else {
-      // Clamp to what's really connected so it can't run away.
-      v.count = Math.min(v.count, real);
+      // Clamp to what's really connected so it can't run away, and treat any
+      // real reader as fresh viewer activity so the grace window keeps the
+      // publish alive through the constant HLS reconnect churn.
+      v.count = Math.min(Math.max(v.count, 1), real);
+      v.lastViewerAt = Date.now();
     }
   }
 }
@@ -112,10 +113,13 @@ function viewerCount(slug) {
 }
 
 // A panel polls this to learn whether it should be publishing (someone watching).
-// We combine our own viewer signal with a GRACE window so brief HLS reconnects
-// (which are constant with segmented HLS) don't flap the camera on/off. The
-// viewer signal is authoritative for "start"; for "stop" we wait out the grace.
-const PUBLISH_GRACE_MS = 12000; // keep publishing this long after last viewer
+// STRONG hysteresis: HLS viewers reconnect constantly (new session every few
+// seconds), so the raw count flaps. We keep publishing as long as there's been
+// ANY viewer activity within a generous grace window. This stops the camera
+// tearing down mid-stream (the "4s then black" bug) while still going off when
+// the room is truly unwatched. `lastViewerAt` is bumped by BOTH start and stop
+// signals and by any real HLS reader seen during reconcile.
+const PUBLISH_GRACE_MS = 30000; // keep publishing 30s after last viewer activity
 function shouldPublish(deviceId) {
   const p = panels.get(deviceId);
   if (p) p.lastSeen = Date.now(); // this poll doubles as a heartbeat

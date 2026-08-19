@@ -88,10 +88,12 @@ hlsSegmentDuration: 1s
 # local process here; the iPad IS the source.
 
 pathDefaults:
-  # Drop the source shortly after the last reader leaves, so a publisher that
-  # lingers doesn't keep the stream (camera light) alive with nobody watching.
-  # The iPad also stops publishing on the viewer-count signal; this is a backstop.
-  runOnDemandCloseAfter: 8s
+  # NOTE: on-demand is enforced on the PUBLISHER side (the iPad stops publishing
+  # when nobody's watching, via /api/cameras/should-publish). We deliberately do
+  # NOT close the path aggressively here: HLS viewers reconnect constantly, and a
+  # short close-after was destroying the muxer mid-stream ("4s then black"). Let
+  # the path persist while the iPad is publishing; the iPad itself is the on/off.
+  runOnDemandCloseAfter: 60s
 
 paths:
   # Any cam-* path is allowed to be published to and read from.

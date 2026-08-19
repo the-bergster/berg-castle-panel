@@ -156,6 +156,9 @@
     if (pub.publishing) return;
     pub.publishing = true;
     emitPubState();
+    // Full cleanup of any stale pc/stream before a fresh publish, so a previous
+    // half-torn-down session can't hold the camera and cause 'waiting tracks'.
+    cleanupPub();
     try {
       pub.stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -183,6 +186,14 @@
       pub.resourceUrl = res.headers.get('Location') || null;
       const answer = await res.text();
       await pub.pc.setRemoteDescription({ type: 'answer', sdp: answer });
+      // Watchdog: if the peer connection fails/disconnects, self-recover on the
+      // next tick instead of sitting dead. (tick() will restart if still wanted.)
+      pub.pc.onconnectionstatechange = () => {
+        const st = pub.pc && pub.pc.connectionState;
+        if (st === 'failed' || st === 'disconnected' || st === 'closed') {
+          if (pub.publishing) { pub.publishing = false; cleanupPub(); emitPubState(); }
+        }
+      };
     } catch (e) {
       console.error('[camera publish]', e.message);
       pub.publishing = false;
