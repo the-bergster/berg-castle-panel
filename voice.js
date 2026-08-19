@@ -360,7 +360,23 @@ function buildSessionConfig(roomsData, scenesData, synthetic, climateZones, sono
   return {
     type: 'realtime',
     model: MODEL,
-    audio: { output: { voice: VOICE } },
+    audio: {
+      output: { voice: VOICE },
+      // Tune server-side VAD so speaker echo / background noise doesn't
+      // constantly interrupt Jony mid-sentence on a wall panel. Higher threshold
+      // + longer required silence + more prefix padding = fewer false barge-ins.
+      // We keep interrupt_response=true so a real user CAN still cut in.
+      input: {
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.75,
+          prefix_padding_ms: 400,
+          silence_duration_ms: 700,
+          create_response: true,
+          interrupt_response: true,
+        },
+      },
+    },
     instructions: buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms),
     tools: toolSchemas(),
     tool_choice: 'auto',

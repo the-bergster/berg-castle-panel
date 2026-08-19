@@ -20,6 +20,7 @@ const Voice = (() => {
   let wakeInitiated = false; // opened by the wake word (=> greet on connect)
   let idleTimer = null; // auto-hangup after inactivity
   const IDLE_MS = 8000; // ~8s of no speech -> hang up
+  let hangUpAfterSpeech = false; // set by end_conversation; teardown when audio stops
 
   function emit() {
     for (const fn of listeners) { try { fn(status, { error: lastError, speaking }); } catch {} }
@@ -99,18 +100,27 @@ const Voice = (() => {
       if (!speaking) { speaking = true; emit(); }
     } else if (msg.type === 'output_audio_buffer.stopped' || msg.type === 'response.done') {
       if (speaking) { speaking = false; emit(); }
+      // If a sign-off is pending, wait until the sign-off audio has actually
+      // finished before tearing down — avoids clipping "no problem, happy to...".
+      if (hangUpAfterSpeech && msg.type === 'output_audio_buffer.stopped') {
+        hangUpAfterSpeech = false;
+        setTimeout(() => teardown(), 300);
+      }
     }
 
     // Tool call.
     if (msg.type === 'response.function_call_arguments.done') {
       // Natural hang-up: the agent decided the conversation is over. Let its
-      // sign-off audio finish, then tear down (which resumes wake-listening).
+      // sign-off audio ACTUALLY finish (output_audio_buffer.stopped), then tear
+      // down. A fixed timer clipped longer goodbyes ("no problem, happy to...").
+      // Safety fallback: if audio-stopped never arrives, hang up after 6s.
       if (msg.name === 'end_conversation') {
         send({
           type: 'conversation.item.create',
           item: { type: 'function_call_output', call_id: msg.call_id, output: '{"ok":true}' },
         });
-        setTimeout(() => teardown(), 2200);
+        hangUpAfterSpeech = true;
+        setTimeout(() => { if (hangUpAfterSpeech) { hangUpAfterSpeech = false; teardown(); } }, 6000);
         return;
       }
       let args = {};
@@ -136,6 +146,7 @@ const Voice = (() => {
   function teardown() {
     clearTimeout(idleTimer); idleTimer = null;
     wakeInitiated = false;
+    hangUpAfterSpeech = false;
     try { if (dc) dc.close(); } catch {}
     try { if (pc) pc.close(); } catch {}
     try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch {}
