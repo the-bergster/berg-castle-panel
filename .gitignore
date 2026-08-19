@@ -7,6 +7,12 @@ node_modules
 .env.local
 /recordings/
 
+# MediaMTX auto-generated TLS certs (regenerated on start).
+auto.crt
+auto.key
+server.crt
+server.key
+
 # Music service credentials — never commit. Copy sonos-config.example.json instead.
 sonos-config.json
 .secrets/

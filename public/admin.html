@@ -218,6 +218,13 @@
             </div>
             <label class="switch"><input type="checkbox" id="wakeWord"><span class="slider"></span></label>
           </div>
+          <div class="toggle-row" id="cameraRow">
+            <div class="toggle-text">
+              <div class="t-title">Room Camera</div>
+              <div class="t-sub">This iPad becomes a camera for its room, viewable from anywhere in the Cameras tab. On-demand only — the camera turns on just while someone’s watching, and shows a LIVE badge. Uses the front camera and the room set above.</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="cameraMode"><span class="slider"></span></label>
+          </div>
           <div class="hint">These control the wall-mounted iPad running the Berg Castle app. For a true kiosk, also turn on Guided Access on the iPad and keep it plugged in.</div>
         </div>`;
 
@@ -232,14 +239,19 @@
 
       // Wall panel: load current + wire the two toggles.
       const wallMode = $('#wallMode'), wakeWord = $('#wakeWord'), wakeRow = $('#wakeRow');
-      function reflectWakeRow() { wakeRow.classList.toggle('disabled', !wallMode.checked); }
+      const cameraMode = $('#cameraMode'), cameraRow = $('#cameraRow');
+      function reflectSubRows() {
+        wakeRow.classList.toggle('disabled', !wallMode.checked);
+        cameraRow.classList.toggle('disabled', !wallMode.checked);
+      }
       async function saveWall() {
         try {
           const res = await api('PUT', '/api/admin/wall-settings',
-            { wallMode: wallMode.checked, wakeWord: wakeWord.checked });
+            { wallMode: wallMode.checked, wakeWord: wakeWord.checked, camera: cameraMode.checked });
           wallMode.checked = !!res.wallMode;
           wakeWord.checked = !!res.wakeWord;
-          reflectWakeRow();
+          cameraMode.checked = !!res.camera;
+          reflectSubRows();
           toast('Saved', 'ok');
         } catch (e) { toast(e.message, 'err'); }
       }
@@ -248,11 +260,13 @@
           const ws = await api('GET', '/api/admin/wall-settings');
           wallMode.checked = !!ws.wallMode;
           wakeWord.checked = !!ws.wakeWord;
-          reflectWakeRow();
+          cameraMode.checked = !!ws.camera;
+          reflectSubRows();
         } catch (_) {}
       })();
-      wallMode.onchange = () => { if (!wallMode.checked) wakeWord.checked = false; reflectWakeRow(); saveWall(); };
+      wallMode.onchange = () => { if (!wallMode.checked) { wakeWord.checked = false; cameraMode.checked = false; } reflectSubRows(); saveWall(); };
       wakeWord.onchange = saveWall;
+      cameraMode.onchange = saveWall;
 
       // This iPad's room — per-DEVICE, stored in localStorage (not the server),
       // because each panel is in a different room. Sent to /api/voice/session so

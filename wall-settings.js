@@ -21,6 +21,9 @@ const DEFAULTS = Object.freeze({
   wallMode: false,
   // On-device "Hey Jony" wake word (only meaningful when wallMode is true).
   wakeWord: false,
+  // This panel may act as an on-demand room camera (publishes front camera via
+  // WHIP only while someone is viewing). Only meaningful when wallMode is true.
+  camera: false,
 });
 
 function read() {
@@ -30,6 +33,7 @@ function read() {
     return {
       wallMode: !!parsed.wallMode,
       wakeWord: !!parsed.wakeWord,
+      camera: !!parsed.camera,
     };
   } catch {
     return { ...DEFAULTS };
@@ -41,9 +45,10 @@ function write(next) {
   const merged = {
     wallMode: next.wallMode === undefined ? cur.wallMode : !!next.wallMode,
     wakeWord: next.wakeWord === undefined ? cur.wakeWord : !!next.wakeWord,
+    camera: next.camera === undefined ? cur.camera : !!next.camera,
   };
-  // Wake word is meaningless without wall mode — keep the stored state coherent.
-  if (!merged.wallMode) merged.wakeWord = false;
+  // Wake word + camera are meaningless without wall mode — keep state coherent.
+  if (!merged.wallMode) { merged.wakeWord = false; merged.camera = false; }
   try {
     fs.mkdirSync(STORE_DIR, { recursive: true });
     fs.writeFileSync(STORE_PATH, JSON.stringify(merged, null, 2));

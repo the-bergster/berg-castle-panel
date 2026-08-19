@@ -1,0 +1,133 @@
+/* Cameras — live video tiles + fullscreen viewer. Landscape-native (16:9).
+   Base .camera-tile / .camera-frame / .camera-tile-foot live in app.css; this
+   layers the video, LIVE/offline badges, and the fullscreen overlay. */
+
+.camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0a0a0d;
+  display: block;
+}
+
+.camera-tile { cursor: default; }
+.camera-tile.is-live { cursor: pointer; }
+.camera-tile.is-live:hover { border-color: var(--line-strong, rgba(255,255,255,0.18)); }
+
+.camera-tile.is-empty { cursor: default; }
+.camera-tile.is-offline .camera-video { opacity: 0.25; filter: grayscale(1); }
+
+/* LIVE badge — only shown on tiles actively streaming. */
+.camera-live-badge {
+  position: absolute;
+  top: 10px; left: 10px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+.camera-tile.is-live .camera-live-badge { display: inline-flex; }
+
+.live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 0 0 rgba(255,59,48,0.6);
+  animation: live-pulse 1.6s infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,59,48,0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(255,59,48,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); }
+}
+
+/* Offline badge */
+.camera-offline-badge {
+  position: absolute;
+  top: 10px; left: 10px;
+  display: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.camera-tile.is-offline .camera-offline-badge { display: inline-block; }
+
+/* ---------- Fullscreen viewer ---------- */
+.cam-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  animation: cam-fs-in 160ms ease;
+}
+@keyframes cam-fs-in { from { opacity: 0; } to { opacity: 1; } }
+
+.cam-fs-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  padding-top: max(14px, env(safe-area-inset-top));
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0));
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 2;
+}
+.cam-fs-close {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.cam-fs-close:hover { background: rgba(255,255,255,0.2); }
+.cam-fs-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+  text-align: center;
+}
+.cam-fs-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+.cam-fs-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.cam-fs-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}

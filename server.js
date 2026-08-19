@@ -29,6 +29,7 @@ const watchRelay = require('./watch-relay');
 const voiceStream = require('./voice-stream');
 const houseMemory = require('./house-memory');
 const wallSettings = require('./wall-settings');
+const cameras = require('./cameras');
 const { WebSocketServer } = require('ws');
 
 const PORT = 4321;
@@ -397,6 +398,77 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Cameras: registry + hub proxy (WHIP publish / HLS view) ----
+  //
+  // A wall panel registers itself as a camera for its room; viewers read the
+  // list to build the grid. Publish/view proxy to the localhost MediaMTX so it
+  // all rides the existing tunnel. Camera is on-demand: the iPad only publishes
+  // while shouldPublish() is true (someone is watching).
+
+  // Panel announces it can be a camera: { deviceId, room }.
+  if (req.method === 'POST' && pathname === '/api/cameras/register') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      let j = {}; try { j = JSON.parse(body || '{}'); } catch {}
+      const out = cameras.register({ deviceId: j.deviceId, room: j.room });
+      res.writeHead(out.ok ? 200 : 400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(out));
+    });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/cameras/unregister') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      let j = {}; try { j = JSON.parse(body || '{}'); } catch {}
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(cameras.unregister(j.deviceId)));
+    });
+    return;
+  }
+  // Viewers read this to build the grid.
+  if (req.method === 'GET' && pathname === '/api/cameras/list') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ cameras: cameras.list() }));
+    return;
+  }
+  // The iPad polls this (also acts as its heartbeat) to know if it should be
+  // publishing right now (someone is watching its stream).
+  if (req.method === 'GET' && pathname === '/api/cameras/should-publish') {
+    const deviceId = url.searchParams.get('deviceId') || '';
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(cameras.shouldPublish(deviceId)));
+    return;
+  }
+  // A viewer signals start/stop watching a stream so the iPad knows to publish.
+  // POST /api/cameras/view { slug, action: 'start'|'stop' }
+  if (req.method === 'POST' && pathname === '/api/cameras/view') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      let j = {}; try { j = JSON.parse(body || '{}'); } catch {}
+      const slug = cameras.slugify(j.slug || '');
+      const count = j.action === 'stop' ? cameras.removeViewer(slug) : cameras.addViewer(slug);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, slug, viewers: count }));
+    });
+    return;
+  }
+  // WHIP publish proxy: iPad POSTs/DELETEs SDP here -> MediaMTX WebRTC listener.
+  // /whip/<slug>  ->  http://127.0.0.1:8889/<slug>/whip
+  if (pathname.startsWith('/whip/')) {
+    const slug = cameras.slugify(pathname.slice('/whip/'.length));
+    cameras.proxy(cameras.MTX_WHIP, req, res, `/${slug}/whip`);
+    return;
+  }
+  // HLS view proxy: viewer GETs playlist + segments -> MediaMTX HLS listener.
+  // /hls/<slug>/...  ->  http://127.0.0.1:8888/<slug>/...
+  if (pathname.startsWith('/hls/')) {
+    cameras.proxy(cameras.MTX_HLS, req, res, pathname.slice('/hls'.length) + (url.search || ''), '/hls');
+    return;
+  }
+
   // Routes
   if (req.method === 'GET' && (pathname === '/' || pathname === '/room' || pathname.startsWith('/room/'))) {
     serveIndexHtml(res); return;
@@ -409,6 +481,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && pathname === '/app.js') {
     serveStatic(res, 'app.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/cameras.js') {
+    serveStatic(res, 'cameras.js'); return;
+  }
+  if (req.method === 'GET' && pathname === '/cameras.css') {
+    serveStatic(res, 'cameras.css'); return;
   }
   if (req.method === 'GET' && pathname === '/app.css') {
     serveStatic(res, 'app.css'); return;

@@ -399,6 +399,7 @@ async function handle(req, res, pathname, ctx = {}) {
       const next = wallSettings.write({
         wallMode: body.wallMode,
         wakeWord: body.wakeWord,
+        camera: body.camera,
       });
       console.log(`[admin] ${requesterEmail(req)} set wall-settings`, next);
       sendJson(res, 200, { ok: true, ...next });

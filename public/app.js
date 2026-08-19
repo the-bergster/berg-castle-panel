@@ -15,13 +15,27 @@ let currentRoute = null;
 // Cloudflare Access cookie is always attached — a native cross-context fetch
 // was NOT reliably carrying it). Refresh on an interval so flipping the toggle
 // in the web admin propagates to the iPad within a few seconds.
-window.__wallSettings = window.__wallSettings || { wallMode: false, wakeWord: false, ts: 0 };
+window.__wallSettings = window.__wallSettings || { wallMode: false, wakeWord: false, camera: false, ts: 0 };
+let __cameraPublisherOn = false;
 async function pollWallSettings() {
   try {
     const r = await fetch('/api/wall-settings', { credentials: 'include', cache: 'no-store' });
     if (!r.ok) return;
     const j = await r.json();
-    window.__wallSettings = { wallMode: !!j.wallMode, wakeWord: !!j.wakeWord, ts: Date.now() };
+    window.__wallSettings = { wallMode: !!j.wallMode, wakeWord: !!j.wakeWord, camera: !!j.camera, ts: Date.now() };
+    // Camera publisher: when this panel is set to be a room camera (and has a
+    // room), register + publish on-demand. Toggling off tears it down.
+    if (window.Cameras) {
+      const room = (() => { try { return (localStorage.getItem('bc.panelRoom') || '').trim(); } catch (_) { return ''; } })();
+      const wantCamera = window.__wallSettings.camera && !!room;
+      if (wantCamera && !__cameraPublisherOn) {
+        __cameraPublisherOn = true;
+        Cameras.enablePublisher(room);
+      } else if (!wantCamera && __cameraPublisherOn) {
+        __cameraPublisherOn = false;
+        Cameras.disablePublisher();
+      }
+    }
   } catch (_) {}
 }
 pollWallSettings();
@@ -248,6 +262,8 @@ function route() {
   // (Voice is intentionally NOT torn down here — the dock is persistent and the
   //  session should survive navigation so you can keep talking anywhere.)
   if (!hash.startsWith('/climate') && window.Climate) Climate.teardown();
+  // Leaving Cameras: stop all live feeds (signals the source iPads to stop).
+  if (hash !== '/cameras' && window.Cameras) { stopCamerasView(); if (CAMERA_REFRESH) { clearInterval(CAMERA_REFRESH); CAMERA_REFRESH = null; } }
   if (hash === '/' || hash === '') {
     Music.teardown();
     renderHub();
@@ -267,6 +283,7 @@ function route() {
   } else if (hash === '/cameras') {
     Music.teardown();
     renderCameras();
+    return;
   } else if (hash === '/fireplaces') {
     Music.teardown();
     renderFireplaces();
@@ -838,13 +855,9 @@ async function sendIntercomBroadcast() {
 // state. When the feeds land, this is where the <video> / MJPEG / HLS embeds
 // go; for now, only the shell and route so the tile is live in the app.
 
-const CAMERA_SLOTS = [
-  { id: 1, label: 'Camera 1' },
-  { id: 2, label: 'Camera 2' },
-  { id: 3, label: 'Camera 3' },
-  { id: 4, label: 'Camera 4' },
-  { id: 5, label: 'Camera 5' },
-];
+// Cameras are now live — pulled from the registry (each wall panel that's set up
+// as a room camera), rendered + played by the Cameras module. No static slots.
+let CAMERA_REFRESH = null;
 
 function renderFireplaces() {
   const outputs = fireplaceOutputs();
@@ -901,7 +914,25 @@ function renderFireplaces() {
   setConn(ws && ws.readyState === WebSocket.OPEN ? 'live' : 'connecting');
 }
 
-function renderCameras() {
+function cameraPlaceholder(label, status) {
+  return `
+    <div class="camera-tile is-empty">
+      <div class="camera-frame">
+        <div class="camera-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          <div class="camera-placeholder-label">${label}</div>
+        </div>
+      </div>
+      <div class="camera-tile-foot">
+        <div class="camera-tile-status">${status || ''}</div>
+      </div>
+    </div>`;
+}
+
+async function renderCameras() {
   app.innerHTML = `
     <div class="topbar">
       <button class="topbar-back" data-back>
@@ -909,38 +940,102 @@ function renderCameras() {
       </button>
       <div>
         <div class="topbar-title">Cameras</div>
-        <span class="topbar-sub">Live feeds</span>
+        <span class="topbar-sub" id="cam-sub">Live feeds</span>
       </div>
       <div class="conn-badge" id="conn-badge">
         <span class="dot"></span>
         <span id="conn-label">Connecting</span>
       </div>
     </div>
-
-    <div class="cameras-grid fade-in">
-      ${CAMERA_SLOTS.map((c) => `
-        <div class="camera-tile" data-camera="${c.id}">
-          <div class="camera-frame">
-            <div class="camera-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M23 7l-7 5 7 5V7z"/>
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-              </svg>
-              <div class="camera-placeholder-label">No feed yet</div>
-            </div>
-          </div>
-          <div class="camera-tile-foot">
-            <div class="camera-tile-title">${c.label}</div>
-            <div class="camera-tile-status">Pending install</div>
-          </div>
-        </div>
-      `).join('')}
+    <div class="cameras-grid fade-in" id="cameras-grid">
+      ${cameraPlaceholder('Loading cameras…', '')}
     </div>
   `;
-
-  app.querySelector('[data-back]').addEventListener('click', () => navigate('/'));
+  app.querySelector('[data-back]').addEventListener('click', () => { stopCamerasView(); navigate('/'); });
   connectWS();
+  await paintCameras();
+  // Refresh the roster periodically (panels coming online/offline).
+  if (CAMERA_REFRESH) clearInterval(CAMERA_REFRESH);
+  CAMERA_REFRESH = setInterval(() => { if (location.hash.replace('#','') === '/cameras') paintCameras(); else stopCamerasView(); }, 10000);
 }
+
+async function paintCameras() {
+  const grid = document.getElementById('cameras-grid');
+  if (!grid || !window.Cameras) return;
+  let cams = [];
+  try { cams = await Cameras.fetchList(); } catch (_) {}
+  const sub = document.getElementById('cam-sub');
+
+  if (!cams.length) {
+    if (sub) sub.textContent = 'No cameras yet';
+    grid.innerHTML = cameraPlaceholder('No cameras set up yet',
+      'Set an iPad’s room + turn on Camera in Wall Panel settings');
+    return;
+  }
+  if (sub) sub.textContent = `${cams.length} ${cams.length === 1 ? 'camera' : 'cameras'}`;
+
+  // Only rebuild tiles that changed identity, so playing videos aren't torn down
+  // on every 10s refresh. Simple approach: rebuild only if the slug set changed.
+  const nextKey = cams.map(c => c.slug + ':' + c.online).join('|');
+  if (grid.dataset.key === nextKey) return;
+  grid.dataset.key = nextKey;
+  stopCamerasView();
+
+  grid.innerHTML = cams.map(c => `
+    <div class="camera-tile ${c.online ? '' : 'is-offline'}" data-slug="${c.slug}" data-room="${escapeAttr(c.room)}">
+      <div class="camera-frame">
+        <video class="camera-video" playsinline muted autoplay></video>
+        <div class="camera-offline-badge">Offline</div>
+        <div class="camera-live-badge"><span class="live-dot"></span>LIVE</div>
+      </div>
+      <div class="camera-tile-foot">
+        <div class="camera-tile-title">${escapeHtml(c.room)}</div>
+        <div class="camera-tile-status">${c.online ? 'Tap to view' : 'Panel offline'}</div>
+      </div>
+    </div>
+  `).join('');
+
+  grid.querySelectorAll('.camera-tile').forEach(tile => {
+    const slug = tile.dataset.slug;
+    const online = !tile.classList.contains('is-offline');
+    const video = tile.querySelector('.camera-video');
+    if (online && video) {
+      // Autoplay a small live preview in each online tile.
+      Cameras.startFeed(slug, video);
+      tile.classList.add('is-live');
+    }
+    tile.addEventListener('click', () => { if (online) openCameraFullscreen(slug, tile.dataset.room); });
+  });
+}
+
+function openCameraFullscreen(slug, room) {
+  let overlay = document.getElementById('cam-fs');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'cam-fs';
+  overlay.className = 'cam-fs';
+  overlay.innerHTML = `
+    <div class="cam-fs-bar">
+      <button class="cam-fs-close">‹ Cameras</button>
+      <div class="cam-fs-title">${escapeHtml(room || '')}</div>
+      <div class="cam-fs-live"><span class="live-dot"></span>LIVE</div>
+    </div>
+    <div class="cam-fs-stage"><video class="cam-fs-video" playsinline autoplay></video></div>
+  `;
+  document.body.appendChild(overlay);
+  const video = overlay.querySelector('.cam-fs-video');
+  Cameras.startFeed(slug, video);
+  const close = () => { Cameras.stopFeed(slug); overlay.remove(); paintCameras(); };
+  overlay.querySelector('.cam-fs-close').addEventListener('click', close);
+}
+
+function stopCamerasView() {
+  if (window.Cameras) Cameras.stopAllFeeds();
+  const grid = document.getElementById('cameras-grid');
+  if (grid) grid.dataset.key = '';
+}
+
+function escapeAttr(s) { return escapeHtml(s); }
 
 // ---------- Rendering: Lights ----------
 

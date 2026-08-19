@@ -2,6 +2,27 @@
 
 _2026-07-30, single session, Sherman CT + Slack #jony-network-party_
 
+## 2026-08-19 — Cameras: each wall iPad as an on-demand room camera (WHIP publish → MediaMTX hub → HLS view)
+
+**Context:** Simon wants every wall iPad to double as a room camera. Sitting by the pool on his phone, he opens the app's Cameras section and sees a live feed from every panel in the house (front camera = the room the panel faces). Future outdoor IP cams (RTSP, ~5-6 of them) drop into the same grid later. Key requirements from him: **on-demand only** (camera idle until someone views it — privacy + his explicit ask), **real live video not 1-2s snapshots**, and "each iPad connects up to the main hub (the Mac), the app pulls the feed from the hub" — which is exactly right.
+
+**Architecture (his instinct, made concrete):**
+- **Hub = MediaMTX** (v1.20.1, `brew`) on the Jony Mac. One binary, free, speaks WHIP (WebRTC publish), WHEP/HLS (playback), and RTSP ingest (for the future IP cams — same grid, same hub).
+- **iPad publishes** its front camera to MediaMTX via **WHIP** over the LAN. Sub-second to the local Mac. On-demand: only publishes while a viewer is watching.
+- **Viewers watch via HLS** through the existing Cloudflare Tunnel. *Why HLS and not WHEP for viewing:* WebRTC media is UDP/ICE, which does NOT traverse the Cloudflare HTTP tunnel — the WHEP handshake would succeed but video wouldn't connect from cellular. HLS is plain HTTP, proxies perfectly, plays anywhere (incl. Simon's phone on cellular). Costs the *viewer* ~1-3s latency; irrelevant for monitoring, and it's continuous video, not snapshots.
+- **No new tunnel hostname, no exposed ports:** the panel server (`localhost:4321`) proxies the MediaMTX WHIP + HLS endpoints, so everything rides the one existing `home.bergcastle.com` tunnel. MediaMTX binds localhost-only.
+- **On-demand** via MediaMTX `runOnDemand`/`runOnDemandCloseAfter` semantics + a publish signal to the iPad, so the camera light only comes on when watched.
+
+**Data model:** each panel registers `{deviceId, room, online}` with the panel server (reuses the per-device room from the room-awareness work — the camera's label IS the panel's room). Cameras grid renders one tile per registered panel (real rooms, replacing the old "Camera 1-5" placeholders), future RTSP cams appended.
+
+**iPad mounting:** horizontal/landscape — capture + tiles + fullscreen designed 16:9.
+
+**Native:** camera permission needs a WebView grant prompt (like mic/speech earlier), so publishing needs one small Xcode build. Viewing is buildless.
+
+**Privacy:** camera defaults OFF per panel (toggle lives with the other Wall Panel settings), publishes only while viewed, visible "camera live" indicator on the iPad when streaming.
+
+**Status:** building. Hub config + panel proxy + Cameras UI first (proves the loop with the one configured iPad), then the native camera-permission build.
+
 ## 2026-08-17 — Owner-only admin panel + one-tap entry (Cloudflare Access user provisioning)
 
 **Context:** Simon asked for a slicker way to provision new house users than hand-editing the Cloudflare Access policy. Green-lit "basic scope, with a view to holding more," plus an elegant one-click way in — he couldn't reach the `/admin` URL from the installed PWA.

@@ -1,0 +1,83 @@
+# Berg Castle camera hub — MediaMTX config.
+#
+# Role: the Mac is the meeting point. Each wall iPad PUBLISHES its front camera
+# here via WHIP (WebRTC) over the LAN; viewers WATCH via HLS through the panel
+# server proxy (so it rides the existing Cloudflare tunnel and works anywhere).
+#
+# Bound to localhost only — the panel server (localhost:4321) is the sole thing
+# that talks to MediaMTX, and it proxies WHIP + HLS out through the tunnel. No
+# ports are exposed directly; MediaMTX is never reachable from the internet.
+#
+# Managed by launchd (deploy/com.simon.berg-castle-cameras.plist).
+
+logLevel: info
+logDestinations: [stdout]
+readTimeout: 15s
+writeTimeout: 15s
+
+###############################################
+# Disable everything we don't use.
+
+rtmp: no
+srt: no
+moq: no
+
+###############################################
+# API — used by the panel server to list/inspect active paths.
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+###############################################
+# RTSP — kept ON (localhost) purely so the FUTURE outdoor IP cameras (which
+# speak RTSP) can be ingested into this same hub and appear in the same grid.
+# Not used by the iPads.
+
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
+###############################################
+# WebRTC — how the iPads PUBLISH (WHIP). Bound to localhost; the panel server
+# proxies /whip to it. ICE stays on the loopback/LAN because publish is
+# iPad -> Mac on the same home network.
+
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcEncryption: no
+webrtcAllowOrigins: ["*"]
+# Trust the local panel-server proxy for X-Forwarded-For.
+webrtcTrustedProxies: [127.0.0.1/32]
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: yes
+
+###############################################
+# HLS — how viewers WATCH. Low-latency HLS for the tightest lag the format
+# allows. Bound to localhost; the panel server proxies /hls to it out through
+# the tunnel (plain HTTP, works on cellular, no TURN needed).
+
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsAllowOrigins: ["*"]
+hlsVariant: lowLatency
+hlsAlwaysRemux: no
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+###############################################
+# Paths. Camera streams are named cam-<room-slug>, e.g. cam-kitchen. Publishing
+# is on-demand from the iPad side (it only pushes while a viewer is connected —
+# enforced by the panel server signalling the iPad), so we don't runOnDemand a
+# local process here; the iPad IS the source.
+
+pathDefaults:
+  # Drop the source shortly after the last reader leaves, so a publisher that
+  # lingers doesn't keep the stream (camera light) alive with nobody watching.
+  # The iPad also stops publishing on the viewer-count signal; this is a backstop.
+  runOnDemandCloseAfter: 8s
+
+paths:
+  # Any cam-* path is allowed to be published to and read from.
+  all_others:

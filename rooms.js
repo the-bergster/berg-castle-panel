@@ -94,6 +94,7 @@ const LIGHTS_HIDDEN_ZONES = new Set(['Fireplaces']);
 const NAME_OVERRIDES = {
   74: "Butler's Pantry",  // was "Buttler&apos;s Pantry"
   43: 'Kids Lounge',      // was "Sun Room"
+  61: 'Simon Office',     // was "Office" (Simon 2026-08-19)
   198: 'Office Equipment',// was "Office 2"
   19: 'Hallway',          // Bedroom Hall → the main upstairs hallway
   211: 'Reading Nook',    // Reading Nook Upstairs → shortened

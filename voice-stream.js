@@ -104,7 +104,7 @@ function attachSession(watchWs, deps) {
           for (const b64 of preOpenAudio) oaSend({ type: 'input_audio_buffer.append', audio: b64 });
           preOpenAudio.length = 0;
           safeSend(watchWs, { type: 'ready' });
-          log('[voice-stream] session ready — freeflow live');
+          log('[voice-stream] session ready — freeflow live; sent {ready} to watch');
         }
         break;
 
@@ -173,15 +173,18 @@ function attachSession(watchWs, deps) {
   oa.on('close', () => shutdown('oa closed'));
 
   // ---- Watch -> Mac ----
+  let audioChunks = 0;
   watchWs.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     switch (msg.type) {
       case 'start':
-        // no-op; session config already built at attach time
+        log('[voice-stream] <- watch: start');
         break;
       case 'audio':
         if (!msg.pcm16) break;
+        audioChunks++;
+        if (audioChunks === 1 || audioChunks % 25 === 0) log(`[voice-stream] <- watch: audio chunk #${audioChunks} (${msg.pcm16.length}b64)`);
         if (oaReady) oaSend({ type: 'input_audio_buffer.append', audio: msg.pcm16 });
         else preOpenAudio.push(msg.pcm16); // buffer until OA ready
         break;
