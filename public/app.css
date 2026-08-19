@@ -564,6 +564,67 @@ body:has(.hub-root) { min-height: 1200px; }
 .b-cameras { grid-column: 1 / -1; }
 @media (min-width: 560px) { .b-cameras { grid-column: span 2; } }
 
+/* ---------- Landscape / iPad wall-panel tier (≥900px wide, landscape) ----------
+   Turns the scrolling phone-hub into a single-screen dashboard: a tall Lights
+   hero on the left, the five utility tiles in a balanced bay on the right. No
+   orphaned rows, no dead space, larger glanceable type + touch targets for a
+   wall-mounted, always-on iPad. Scoped to landscape so tall iPad portrait keeps
+   the phone-style stack. */
+@media (min-width: 900px) and (orientation: landscape) {
+  .hub-root {
+    max-width: 1500px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .hub-head { padding: 26px 40px 4px; }
+  .hub-greeting { font-size: 16px; }
+  .hub-place { font-size: 44px; }
+  .hub-summary-line { font-size: 16px; margin-top: 8px; }
+
+  .bento {
+    /* Lights hero column (wider) + two equal utility columns. */
+    grid-template-columns: 1.35fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    padding: 18px 40px 24px;
+  }
+  /* Lights: tall hero spanning both rows in the first column. */
+  .b-lights { grid-column: 1; grid-row: 1 / span 2; }
+  /* Utility tiles fill the right bay: two rows of two, then Cameras
+     wide across the bottom of the right side so nothing is orphaned. */
+  .b-music    { grid-column: 2; grid-row: 1; }
+  .b-fire     { grid-column: 3; grid-row: 1; }
+  .b-climate  { grid-column: 2; grid-row: 2; }
+  .b-intercom { grid-column: 3; grid-row: 2; }
+  .b-cameras  { grid-column: 1 / -1; grid-row: 3; }
+
+  /* Give Cameras its own short third row rather than crushing the bay. */
+  .bento { grid-template-rows: 1fr 1fr 0.5fr; }
+
+  /* Bigger, more legible tiles across the room. Lift secondary-text contrast
+     one step so status reads at wall distance. */
+  .bt-title { font-size: 21px; }
+  .bt-sub { font-size: 15px; color: var(--text-mid); }
+  .b-lights .bt-title { font-size: 30px; }
+  .b-lights .bt-sub { font-size: 16px; }
+
+  /* Lights hero: the phone/tablet build renders Lights as a horizontal BANNER
+     (icon left, label, chip right). As a tall landscape hero that leaves the
+     label stranded mid-tile. Override back to a vertical column with the
+     icon + label stacked at the TOP, matching the small tiles. */
+  .bento .b-lights {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 18px 18px;
+  }
+  .bento .b-lights .bt-top { flex: 0 0 auto; width: 100%; }
+  .bento .b-lights .bt-foot { flex: 0 0 auto; margin-top: 14px; }
+  /* The hero count already reads in the subtitle ("45 on"), so drop the
+     duplicate corner badge on the big tile only. */
+  .bento .b-lights .bt-count { display: none; }
+}
+
 .bento-tile {
   position: relative;
   min-height: 0;
