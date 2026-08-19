@@ -98,6 +98,10 @@
     .toggle-row.disabled { opacity:.45; pointer-events:none; }
     .toggle-text .t-title { font-size:15px; font-weight:600; color:var(--text); }
     .toggle-text .t-sub { font-size:12.5px; color:var(--text-dim); margin-top:3px; line-height:1.5; }
+    .room-select { flex:0 0 auto; max-width:180px; height:40px; background:var(--bg-3);
+      color:var(--text); border:1px solid var(--line-strong); border-radius:10px;
+      padding:0 12px; font-size:15px; cursor:pointer; }
+    .room-select:focus { outline:none; border-color:var(--accent-dim); }
     .switch { position:relative; flex:0 0 auto; width:52px; height:31px; }
     .switch input { opacity:0; width:0; height:0; }
     .slider { position:absolute; inset:0; cursor:pointer; background:var(--bg-4);
@@ -195,6 +199,13 @@
           <h2>Wall Panel</h2>
           <div class="toggle-row">
             <div class="toggle-text">
+              <div class="t-title">This iPad’s Room</div>
+              <div class="t-sub">Where this panel is mounted. Lets you say “turn off the lights” or “what’s the temperature” and Jony knows you mean this room. Saved on this device only — set it on each iPad.</div>
+            </div>
+            <select id="panelRoom" class="room-select"><option value="">— Not set —</option></select>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-text">
               <div class="t-title">Wall Panel Mode</div>
               <div class="t-sub">Keeps the wall iPad's screen awake for an always-on display. Takes effect on the iPad within a few seconds.</div>
             </div>
@@ -242,6 +253,40 @@
       })();
       wallMode.onchange = () => { if (!wallMode.checked) wakeWord.checked = false; reflectWakeRow(); saveWall(); };
       wakeWord.onchange = saveWall;
+
+      // This iPad's room — per-DEVICE, stored in localStorage (not the server),
+      // because each panel is in a different room. Sent to /api/voice/session so
+      // bare commands resolve to this room. Populate from the live room list.
+      const panelRoom = $('#panelRoom');
+      (async () => {
+        let saved = '';
+        try { saved = (localStorage.getItem('bc.panelRoom') || '').trim(); } catch (_) {}
+        try {
+          const data = await api('GET', '/api/rooms');
+          const names = [];
+          (data.zones || []).forEach(z => (z.rooms || []).forEach(r => names.push(r.name)));
+          names.sort((a, b) => a.localeCompare(b));
+          for (const n of names) {
+            const opt = document.createElement('option');
+            opt.value = n; opt.textContent = n;
+            panelRoom.appendChild(opt);
+          }
+          // If a saved room is no longer in the list (renamed), keep it as an option.
+          if (saved && !names.includes(saved)) {
+            const opt = document.createElement('option');
+            opt.value = saved; opt.textContent = saved + ' (custom)';
+            panelRoom.appendChild(opt);
+          }
+        } catch (_) {}
+        if (saved) panelRoom.value = saved;
+      })();
+      panelRoom.onchange = () => {
+        try {
+          if (panelRoom.value) localStorage.setItem('bc.panelRoom', panelRoom.value);
+          else localStorage.removeItem('bc.panelRoom');
+          toast(panelRoom.value ? ('This iPad is in: ' + panelRoom.value) : 'Room cleared', 'ok');
+        } catch (e) { toast('Could not save on this device', 'err'); }
+      };
       $('#savePersonaBtn').onclick = async () => {
         const btn = $('#savePersonaBtn'); btn.disabled = true;
         try {

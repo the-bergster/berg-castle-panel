@@ -36,7 +36,49 @@ function loadApiKey() {
 
 // -------- Agent knowledge (built from live data) --------
 
-function buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms) {
+// Build the room-awareness block. `panelRoom` is the room this physical iPad
+// panel is mounted in (set per-device in the panel settings). When present, the
+// agent treats bare/implicit locations ("the lights", "in this room", "the
+// temperature") as referring to THIS room, while an explicitly named room still
+// wins. We resolve the spoken room to the closest lighting room / climate zone /
+// Sonos room so the tool calls target the right things.
+function buildRoomContext(panelRoom, roomsData, climateZones, sonosRooms) {
+  const room = (panelRoom || '').trim();
+  if (!room) return '';
+
+  // Best-effort exact-ish matches so we can hint the agent which real names to
+  // use for each subsystem (names differ across Lutron / Ecobee / Sonos).
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const target = norm(room);
+  const findName = (names) => {
+    if (!names || !names.length) return null;
+    let hit = names.find((n) => norm(n) === target);
+    if (hit) return hit;
+    hit = names.find((n) => norm(n).includes(target) || target.includes(norm(n)));
+    return hit || null;
+  };
+
+  const lightingRoomNames = [];
+  for (const z of roomsData.zones) for (const r of z.rooms) lightingRoomNames.push(r.name);
+  const lightRoom = findName(lightingRoomNames);
+  const climateZone = findName(climateZones);
+  const sonosRoom = findName(sonosRooms);
+
+  const lines = [];
+  lines.push('\nYOU ARE HERE (this panel\'s physical location)');
+  lines.push(`- This wall panel is physically located in: ${room}.`);
+  lines.push('- When the person does NOT name a room ("turn off the lights", "what\'s the temperature", "play some jazz", "warm it up"), assume they mean THIS room and act on it.');
+  lines.push('- "this room", "in here", "here" all mean this room.');
+  lines.push('- If they DO name a different room, that always wins — act on the room they named, not this one.');
+  if (lightRoom) lines.push(`- For lights here, use the lighting room "${lightRoom}".`);
+  if (climateZone) lines.push(`- For temperature/climate here, use the climate zone "${climateZone}".`);
+  if (sonosRoom) lines.push(`- For music here, use the Sonos room "${sonosRoom}".`);
+  if (!climateZone) lines.push('- This room may not have its own thermostat; if there\'s no matching climate zone, say so briefly rather than guessing.');
+  if (!sonosRoom) lines.push('- This room may not have its own Sonos; if there\'s no matching music room, say so briefly rather than guessing.');
+  return lines.join('\n') + '\n';
+}
+
+function buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms, panelRoom) {
   const zones = roomsData.zones.map(z => {
     const rooms = z.rooms.map(r => {
       const outs = r.outputs
@@ -118,6 +160,7 @@ SONOS MUSIC ROOMS:
 ${sonosList}
 
 Cameras are coming soon — you can't see them yet.
+${buildRoomContext(panelRoom, roomsData, climateZones, sonosRooms)}
 
 MEMORY
 - When Simon explicitly asks you to remember something ("remember that...",
@@ -359,7 +402,7 @@ function toolSchemas() {
   ];
 }
 
-function buildSessionConfig(roomsData, scenesData, synthetic, climateZones, sonosRooms) {
+function buildSessionConfig(roomsData, scenesData, synthetic, climateZones, sonosRooms, panelRoom) {
   return {
     type: 'realtime',
     model: MODEL,
@@ -380,7 +423,7 @@ function buildSessionConfig(roomsData, scenesData, synthetic, climateZones, sono
         },
       },
     },
-    instructions: buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms),
+    instructions: buildInstructions(roomsData, scenesData, synthetic, climateZones, sonosRooms, panelRoom),
     tools: toolSchemas(),
     tool_choice: 'auto',
   };

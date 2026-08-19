@@ -40,7 +40,13 @@ const Voice = (() => {
     wakeInitiated = !!(opts && opts.wake);
     setStatus('connecting');
     try {
-      const sess = await fetch('/api/voice/session').then(r => r.json());
+      // This device's room (set in Settings → Wall Panel → This iPad's Room).
+      // Stored per-device in localStorage so each panel knows where it is; sent
+      // so bare commands ("turn off the lights") resolve to this room.
+      let panelRoom = '';
+      try { panelRoom = (localStorage.getItem('bc.panelRoom') || '').trim(); } catch (_) {}
+      const sessUrl = '/api/voice/session' + (panelRoom ? ('?room=' + encodeURIComponent(panelRoom)) : '');
+      const sess = await fetch(sessUrl).then(r => r.json());
       if (!sess.value) throw new Error(sess.error || 'no session key');
 
       pc = new RTCPeerConnection();

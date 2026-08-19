@@ -554,6 +554,12 @@ const server = http.createServer(async (req, res) => {
   // Mint an ephemeral client secret (browser never sees the real key).
   if (req.method === 'GET' && pathname === '/api/voice/session') {
     (async () => {
+      // The panel tells us which room this physical iPad is mounted in (set
+      // per-device in the panel settings, stored in that device's localStorage).
+      // With it, bare commands ("turn off the lights", "what's the temperature")
+      // resolve to THIS room. Empty = no room awareness (behaves as before).
+      let panelRoom = '';
+      try { panelRoom = (new URL(req.url, `http://${req.headers.host}`).searchParams.get('room') || '').slice(0, 60); } catch (_) {}
       // Pull live climate zone names + Sonos room names so the agent knows the
       // real setup. Both are best-effort — fall back to empty if unavailable.
       let climateZones = [];
@@ -567,7 +573,7 @@ const server = http.createServer(async (req, res) => {
         sonosRooms = [...new Set((sonos.topology.rooms || []).map(r => r.name).filter(Boolean))].sort();
       } catch (e) { console.error('[voice] sonos list failed:', e.message); }
 
-      const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms);
+      const cfg = voice.buildSessionConfig(ROOMS_DATA, SCENES_DATA, SYNTHETIC, climateZones, sonosRooms, panelRoom);
       const out = await voice.mintClientSecret(cfg);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ value: out.value, expires_at: out.expires_at, model: voice.MODEL }));
