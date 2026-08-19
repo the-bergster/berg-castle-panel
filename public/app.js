@@ -9,6 +9,24 @@ let STATE = new Map(); // integration_id -> level
 let ws = null;
 let currentRoute = null;
 
+// ---------- Wall-panel settings bridge (for the native iOS app) ----------
+// The native wall-panel app reads window.__wallSettings to decide keep-awake +
+// wake word. We fetch same-origin here (inside the fully-authed page, so the
+// Cloudflare Access cookie is always attached — a native cross-context fetch
+// was NOT reliably carrying it). Refresh on an interval so flipping the toggle
+// in the web admin propagates to the iPad within a few seconds.
+window.__wallSettings = window.__wallSettings || { wallMode: false, wakeWord: false, ts: 0 };
+async function pollWallSettings() {
+  try {
+    const r = await fetch('/api/wall-settings', { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    window.__wallSettings = { wallMode: !!j.wallMode, wakeWord: !!j.wakeWord, ts: Date.now() };
+  } catch (_) {}
+}
+pollWallSettings();
+setInterval(pollWallSettings, 6000);
+
 // ---------- Data ----------
 
 async function fetchRooms() {
