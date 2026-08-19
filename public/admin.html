@@ -91,6 +91,21 @@
     ul.users button.rm { color:var(--danger); }
     ul.users button.rm:active { background:var(--danger-dim); color:#fff; }
     .field + .field { margin-top:18px; }
+    /* Toggle rows (wall-panel settings) */
+    .toggle-row { display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+      padding:14px 0; border-bottom:1px solid var(--line); }
+    .toggle-row:last-child { border-bottom:none; }
+    .toggle-row.disabled { opacity:.45; pointer-events:none; }
+    .toggle-text .t-title { font-size:15px; font-weight:600; color:var(--text); }
+    .toggle-text .t-sub { font-size:12.5px; color:var(--text-dim); margin-top:3px; line-height:1.5; }
+    .switch { position:relative; flex:0 0 auto; width:52px; height:31px; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; cursor:pointer; background:var(--bg-4);
+      border:1px solid var(--line-strong); border-radius:999px; transition:all var(--ease) 180ms; }
+    .slider::before { content:''; position:absolute; height:25px; width:25px; left:2px; top:2px;
+      background:#f4f4f7; border-radius:50%; transition:all var(--ease) 180ms; }
+    .switch input:checked + .slider { background:var(--accent); border-color:var(--accent); }
+    .switch input:checked + .slider::before { transform:translateX(21px); }
   </style>
 </head>
 <body>
@@ -175,6 +190,24 @@
               <button class="add" id="saveMemoryBtn">Save</button>
             </div>
           </div>
+        </div>
+        <div class="card">
+          <h2>Wall Panel</h2>
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <div class="t-title">Wall Panel Mode</div>
+              <div class="t-sub">Keeps the wall iPad's screen awake for an always-on display. Takes effect on the iPad within a few seconds.</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="wallMode"><span class="slider"></span></label>
+          </div>
+          <div class="toggle-row" id="wakeRow">
+            <div class="toggle-text">
+              <div class="t-title">“Hey Jony” Wake Word</div>
+              <div class="t-sub">The iPad listens on-device and opens the voice session when it hears you. Mic audio stays on the iPad until you start talking.</div>
+            </div>
+            <label class="switch"><input type="checkbox" id="wakeWord"><span class="slider"></span></label>
+          </div>
+          <div class="hint">These control the wall-mounted iPad running the Berg Castle app. For a true kiosk, also turn on Guided Access on the iPad and keep it plugged in.</div>
         </div>`;
 
       // Voice agent: load + wire save buttons.
@@ -185,6 +218,30 @@
           $('#vMemory').value = vm.memory || '';
         } catch (_) {}
       })();
+
+      // Wall panel: load current + wire the two toggles.
+      const wallMode = $('#wallMode'), wakeWord = $('#wakeWord'), wakeRow = $('#wakeRow');
+      function reflectWakeRow() { wakeRow.classList.toggle('disabled', !wallMode.checked); }
+      async function saveWall() {
+        try {
+          const res = await api('PUT', '/api/admin/wall-settings',
+            { wallMode: wallMode.checked, wakeWord: wakeWord.checked });
+          wallMode.checked = !!res.wallMode;
+          wakeWord.checked = !!res.wakeWord;
+          reflectWakeRow();
+          toast('Saved', 'ok');
+        } catch (e) { toast(e.message, 'err'); }
+      }
+      (async () => {
+        try {
+          const ws = await api('GET', '/api/admin/wall-settings');
+          wallMode.checked = !!ws.wallMode;
+          wakeWord.checked = !!ws.wakeWord;
+          reflectWakeRow();
+        } catch (_) {}
+      })();
+      wallMode.onchange = () => { if (!wallMode.checked) wakeWord.checked = false; reflectWakeRow(); saveWall(); };
+      wakeWord.onchange = saveWall;
       $('#savePersonaBtn').onclick = async () => {
         const btn = $('#savePersonaBtn'); btn.disabled = true;
         try {

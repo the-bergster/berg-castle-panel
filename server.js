@@ -28,6 +28,7 @@ const admin = require('./admin');
 const watchRelay = require('./watch-relay');
 const voiceStream = require('./voice-stream');
 const houseMemory = require('./house-memory');
+const wallSettings = require('./wall-settings');
 const { WebSocketServer } = require('ws');
 
 const PORT = 4321;
@@ -384,6 +385,16 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/admin/')) {
     const handled = await admin.handle(req, res, pathname);
     if (handled) return;
+  }
+
+  // Wall-panel settings READ (CF Access-gated, house members).
+  // The native iOS app reads this to decide keep-awake + wake-word. It's not
+  // owner-only because the app just needs to know how to behave; only editing
+  // (via /api/admin/wall-settings) is owner-gated.
+  if (req.method === 'GET' && pathname === '/api/wall-settings') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(wallSettings.read()));
+    return;
   }
 
   // Routes

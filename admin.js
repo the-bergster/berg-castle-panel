@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const houseMemory = require('./house-memory');
+const wallSettings = require('./wall-settings');
 
 // ---- Config ----------------------------------------------------------------
 
@@ -378,6 +379,29 @@ async function handle(req, res, pathname, ctx = {}) {
       houseMemory.writePromptOverride(String(promptOverride || ''));
       console.log(`[admin] ${requesterEmail(req)} edited voice prompt override`);
       sendJson(res, 200, { ok: true, promptOverride: houseMemory.readPromptOverride() });
+      return true;
+    }
+
+    // ---- Wall-panel device settings (owner-only edit) ----
+    // Edited here in the web admin so there's one settings home; the native iOS
+    // app reads these (see /api/wall-settings) and does the keep-awake + wake-word
+    // work, which a web page can't do itself.
+
+    // GET /api/admin/wall-settings — current wall-panel settings.
+    if (req.method === 'GET' && pathname === '/api/admin/wall-settings') {
+      sendJson(res, 200, wallSettings.read());
+      return true;
+    }
+
+    // PUT /api/admin/wall-settings { wallMode, wakeWord } — update them.
+    if (req.method === 'PUT' && pathname === '/api/admin/wall-settings') {
+      const body = await readBody(req);
+      const next = wallSettings.write({
+        wallMode: body.wallMode,
+        wakeWord: body.wakeWord,
+      });
+      console.log(`[admin] ${requesterEmail(req)} set wall-settings`, next);
+      sendJson(res, 200, { ok: true, ...next });
       return true;
     }
 
