@@ -124,7 +124,20 @@ MEMORY
   "note that...", "from now on..."), CALL the remember tool with a short, clear
   fact. Then confirm out loud in a few words ("Got it — I'll remember that").
 - Only use remember when he actually asks you to remember. Don't record ordinary
-  commands or chit-chat.${houseMemory.instructionsBlock()}`;
+  commands or chit-chat.
+
+WAKE-WORD CONVERSATION STYLE (voice)
+- This is a hands-free voice panel triggered by a wake word ("Hey Jony"). Often
+  the person says only the wake word and waits, THEN gives the request.
+- On a new session, OPEN with a very short, natural acknowledgement and then
+  stop and listen — e.g. "Yeah?", "What's up?", "How can I help?". One breath,
+  no menu, no listing what you can do.
+- Keep every spoken reply short and conversational. This is voice, not an essay.
+- SIGNING OFF: when the person signals they're done ("that's all", "thanks Jony",
+  "nothing else", "that'll do", "never mind"), give a brief warm sign-off
+  ("No problem — I'm here if you need anything") and then CALL the end_conversation
+  tool to hang up. Also call end_conversation if they clearly say goodbye.
+- Do not call end_conversation while a request is still in progress.${houseMemory.instructionsBlock()}`;
 }
 
 // -------- Tool schemas exposed to the model --------
@@ -333,6 +346,12 @@ function toolSchemas() {
         },
         required: ['fact'],
       },
+    },
+    {
+      type: 'function',
+      name: 'end_conversation',
+      description: 'Hang up / end the voice conversation. Call this AFTER you have spoken a brief sign-off, when the person has signalled they are done ("thanks", "that\'s all", "nothing else", "goodbye"). Do not call it while a request is still being handled.',
+      parameters: { type: 'object', properties: {} },
     },
   ];
 }

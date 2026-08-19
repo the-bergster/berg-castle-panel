@@ -17,14 +17,26 @@ const Voice = (() => {
   let listeners = new Set();
   let lastError = null;
   let speaking = false; // model is talking
+  let wakeInitiated = false; // opened by the wake word (=> greet on connect)
+  let idleTimer = null; // auto-hangup after inactivity
+  const IDLE_MS = 18000; // ~18s of no speech -> hang up
 
   function emit() {
     for (const fn of listeners) { try { fn(status, { error: lastError, speaking }); } catch {} }
   }
   function setStatus(s, err) { status = s; lastError = err || null; emit(); }
 
-  async function connect() {
+  function armIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      // No activity for a while — close the session and go back to wake-listening.
+      teardown();
+    }, IDLE_MS);
+  }
+
+  async function connect(opts) {
     if (status === 'connecting' || status === 'live') return;
+    wakeInitiated = !!(opts && opts.wake);
     setStatus('connecting');
     try {
       const sess = await fetch('/api/voice/session').then(r => r.json());
@@ -45,7 +57,18 @@ const Voice = (() => {
 
       dc = pc.createDataChannel('oai-events');
       dc.addEventListener('message', onServerEvent);
-      dc.addEventListener('open', () => setStatus('live'));
+      dc.addEventListener('open', () => {
+        setStatus('live');
+        armIdleTimer();
+        // If the wake word opened this, prompt a short spoken greeting so the
+        // user hears an acknowledgement and can then speak their request.
+        if (wakeInitiated) {
+          send({
+            type: 'response.create',
+            response: { instructions: 'Greet the person in one very short, natural phrase like "Yeah?" or "What\'s up?" and then stop and listen. Do not list capabilities.' },
+          });
+        }
+      });
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -68,6 +91,9 @@ const Voice = (() => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
 
+    // Any server event = activity; push back the idle auto-hangup.
+    armIdleTimer();
+
     // Speaking state — for the dock animation.
     if (msg.type === 'output_audio_buffer.started' || msg.type === 'response.output_audio.delta') {
       if (!speaking) { speaking = true; emit(); }
@@ -77,6 +103,16 @@ const Voice = (() => {
 
     // Tool call.
     if (msg.type === 'response.function_call_arguments.done') {
+      // Natural hang-up: the agent decided the conversation is over. Let its
+      // sign-off audio finish, then tear down (which resumes wake-listening).
+      if (msg.name === 'end_conversation') {
+        send({
+          type: 'conversation.item.create',
+          item: { type: 'function_call_output', call_id: msg.call_id, output: '{"ok":true}' },
+        });
+        setTimeout(() => teardown(), 2200);
+        return;
+      }
       let args = {};
       try { args = JSON.parse(msg.arguments || '{}'); } catch {}
       let result;
@@ -98,6 +134,8 @@ const Voice = (() => {
   function send(obj) { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(obj)); }
 
   function teardown() {
+    clearTimeout(idleTimer); idleTimer = null;
+    wakeInitiated = false;
     try { if (dc) dc.close(); } catch {}
     try { if (pc) pc.close(); } catch {}
     try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch {}
