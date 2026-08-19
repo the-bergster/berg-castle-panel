@@ -21,6 +21,7 @@ const Voice = (() => {
   let idleTimer = null; // auto-hangup after inactivity
   const IDLE_MS = 8000; // ~8s of no speech -> hang up
   let hangUpAfterSpeech = false; // set by end_conversation; teardown when audio stops
+  let spokeThisTurn = false; // did the model speak audio in the current response turn?
 
   function emit() {
     for (const fn of listeners) { try { fn(status, { error: lastError, speaking }); } catch {} }
@@ -109,8 +110,13 @@ const Voice = (() => {
     // Any server event = activity; push back the idle auto-hangup.
     armIdleTimer();
 
+    // New response turn begins — reset per-turn speech tracking so we can tell if
+    // the model spoke a goodbye in the same turn it calls end_conversation.
+    if (msg.type === 'response.created') spokeThisTurn = false;
+
     // Speaking state — for the dock animation.
     if (msg.type === 'output_audio_buffer.started' || msg.type === 'response.output_audio.delta') {
+      spokeThisTurn = true; // model produced audio in this turn
       if (!speaking) { speaking = true; emit(); }
     } else if (msg.type === 'output_audio_buffer.stopped' || msg.type === 'response.done') {
       const wasSpeaking = speaking;
@@ -131,23 +137,31 @@ const Voice = (() => {
       // down. A fixed timer clipped longer goodbyes ("no problem, happy to...").
       // Safety fallback: if audio-stopped never arrives, hang up after 6s.
       if (msg.name === 'end_conversation') {
-        // Acknowledge the tool, THEN explicitly ask for a spoken sign-off, and
-        // only hang up once that goodbye audio has finished. Previously we waited
-        // for an audio-stop that often never came (the model called the tool
-        // WITHOUT speaking), so he ended silently. Forcing the goodbye response
-        // guarantees he actually says something before the line drops.
+        // Acknowledge the tool.
         send({
           type: 'conversation.item.create',
           item: { type: 'function_call_output', call_id: msg.call_id, output: '{"ok":true}' },
         });
         hangUpAfterSpeech = true;
-        send({
-          type: 'response.create',
-          response: {
-            instructions: 'Say a brief, warm, HUMAN sign-off the way a person ends a call — e.g. "No problem, catch you later!", "Anytime — bye!", "Sure thing, see you!". End with a natural closer like "bye", "catch you later", or "see you". Do NOT narrate the mechanics of ending (never say things like "let me close things out", "ending the call", or "hanging up now"). One short sentence, then stop. Do not ask another question.',
-          },
-        });
-        // Safety fallback: if the goodbye audio never completes, hang up after 8s.
+        // KEY: the model usually ALREADY speaks a goodbye in the same turn it
+        // calls end_conversation ("Anytime, happy to help"). Forcing a second
+        // sign-off response then double-taps it ("...help" then "...help bye").
+        // So only force a spoken sign-off when it ended SILENTLY (no audio this
+        // turn). If it already spoke, just let that goodbye finish and tear down.
+        if (spokeThisTurn) {
+          // Already said goodbye. If audio has finished stopping, tear down now;
+          // otherwise the output_audio_buffer.stopped handler above will.
+          if (!speaking) { hangUpAfterSpeech = false; setTimeout(() => teardown(), 300); }
+        } else {
+          // Silent tool call — explicitly ask for one short spoken sign-off.
+          send({
+            type: 'response.create',
+            response: {
+              instructions: 'Say a brief, warm, HUMAN sign-off the way a person ends a call — e.g. "No problem, catch you later!", "Anytime — bye!", "Sure thing, see you!". End with a natural closer like "bye", "catch you later", or "see you". Do NOT narrate the mechanics of ending (never say things like "let me close things out", "ending the call", or "hanging up now"). One short sentence, then stop. Do not ask another question.',
+            },
+          });
+        }
+        // Safety fallback: if we never tear down cleanly, hang up after 8s.
         setTimeout(() => { if (hangUpAfterSpeech) { hangUpAfterSpeech = false; teardown(); } }, 8000);
         return;
       }

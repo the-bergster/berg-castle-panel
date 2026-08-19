@@ -177,12 +177,11 @@ WAKE-WORD CONVERSATION STYLE (voice)
   no menu, no listing what you can do.
 - Keep every spoken reply short and conversational. This is voice, not an essay.
 - SIGNING OFF: when the person signals they're done ("that's all", "thanks Jony",
-  "nothing else", "that'll do", "never mind"), CALL the end_conversation tool.
-  When you say goodbye, end like a human on a call — a warm one-liner with a
-  natural closer ("No problem, catch you later!", "Anytime — bye!", "Sure, see
-  you!"). NEVER narrate the mechanics of ending (no "let me close things out",
-  "ending the call", "hanging up now"). Also call end_conversation on a clear
-  goodbye.
+  "nothing else", "that'll do", "never mind"), SAY your goodbye out loud FIRST
+  — ONE short warm human closer ("No problem, catch you later!", "Anytime —
+  bye!", "Sure, see you!") — and THEN call the end_conversation tool in the SAME
+  turn. Say the goodbye ONCE only; do not repeat it. NEVER narrate the mechanics
+  of ending (no "let me close things out", "ending the call", "hanging up now").
 - Do not call end_conversation while a request is still in progress.${houseMemory.instructionsBlock()}`;
 }
 
