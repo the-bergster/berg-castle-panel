@@ -53,7 +53,15 @@ const Voice = (() => {
       })();
       pc.ontrack = (e) => { audioEl.srcObject = e.streams[0]; };
 
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Acoustic echo cancellation: stop the mic from hearing Jony's own voice
+      // out of the speaker (the cause of self-interrupt cut-offs on a wall panel).
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       for (const track of micStream.getTracks()) pc.addTrack(track, micStream);
 
       dc = pc.createDataChannel('oai-events');
