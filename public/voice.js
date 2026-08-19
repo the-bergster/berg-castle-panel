@@ -107,12 +107,14 @@ const Voice = (() => {
     if (msg.type === 'output_audio_buffer.started' || msg.type === 'response.output_audio.delta') {
       if (!speaking) { speaking = true; emit(); }
     } else if (msg.type === 'output_audio_buffer.stopped' || msg.type === 'response.done') {
+      const wasSpeaking = speaking;
       if (speaking) { speaking = false; emit(); }
-      // If a sign-off is pending, wait until the sign-off audio has actually
-      // finished before tearing down — avoids clipping "no problem, happy to...".
-      if (hangUpAfterSpeech && msg.type === 'output_audio_buffer.stopped') {
+      // Sign-off pending: only hang up once the goodbye has ACTUALLY been spoken
+      // (audio started then stopped). Requiring wasSpeaking avoids tearing down
+      // on a silent/zero-audio stop, which was ending the call with no words.
+      if (hangUpAfterSpeech && msg.type === 'output_audio_buffer.stopped' && wasSpeaking) {
         hangUpAfterSpeech = false;
-        setTimeout(() => teardown(), 300);
+        setTimeout(() => teardown(), 350);
       }
     }
 
@@ -123,12 +125,24 @@ const Voice = (() => {
       // down. A fixed timer clipped longer goodbyes ("no problem, happy to...").
       // Safety fallback: if audio-stopped never arrives, hang up after 6s.
       if (msg.name === 'end_conversation') {
+        // Acknowledge the tool, THEN explicitly ask for a spoken sign-off, and
+        // only hang up once that goodbye audio has finished. Previously we waited
+        // for an audio-stop that often never came (the model called the tool
+        // WITHOUT speaking), so he ended silently. Forcing the goodbye response
+        // guarantees he actually says something before the line drops.
         send({
           type: 'conversation.item.create',
           item: { type: 'function_call_output', call_id: msg.call_id, output: '{"ok":true}' },
         });
         hangUpAfterSpeech = true;
-        setTimeout(() => { if (hangUpAfterSpeech) { hangUpAfterSpeech = false; teardown(); } }, 6000);
+        send({
+          type: 'response.create',
+          response: {
+            instructions: 'Say a brief, warm sign-off in one short sentence (e.g. "No problem — I\'m here if you need anything.") Then stop. Do not ask another question.',
+          },
+        });
+        // Safety fallback: if the goodbye audio never completes, hang up after 8s.
+        setTimeout(() => { if (hangUpAfterSpeech) { hangUpAfterSpeech = false; teardown(); } }, 8000);
         return;
       }
       let args = {};
